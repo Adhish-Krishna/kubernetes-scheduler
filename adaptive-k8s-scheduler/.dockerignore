@@ -1,0 +1,36 @@
+# Precompiled binaries and build artifacts
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Kubernetes deployment manifests & CRD definitions
+deployments/
+
+# Documentation and project notes
+*.md
+docs/
+
+# Test files and mocks
+**/*_test.go
+
+# Version control and CI files
+.git/
+.gitignore
+.github/
+
+# IDE and editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Logs and temporary caches
+*.log
+tmp/
+temp/
