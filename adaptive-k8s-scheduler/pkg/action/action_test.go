@@ -79,9 +79,9 @@ func (m *mockRecordWriter) Create(ctx context.Context, record *v1alpha1.Checkpoi
 
 func createTestPodMetrics() *metrics.PodMetrics {
 	return &metrics.PodMetrics{
-		Namespace: "ecommerce",
-		Name:      "analytics-worker-xyz",
-		NodeName:  "kind-worker-1",
+		Namespace:               "ecommerce",
+		Name:                    "analytics-worker-xyz",
+		NodeName:                "kind-worker-1",
 		TotalRequestedCPUMillis: 1000,
 		TotalLimitCPUMillis:     2000,
 		TotalRequestedMemory:    1024 * 1024 * 1024, // 1 GiB
@@ -130,8 +130,10 @@ func TestExecuteFullReclaimSuccess(t *testing.T) {
 
 	mgr := NewActionManager(kubelet, validator, evictor, nil, writer, nil)
 
+	pod := createTestPodMetrics()
+	pod.PodSpecSnapshot = `{"containers":[{"name":"worker","image":"worker:latest"}]}`
 	req := ActionRequest{
-		Pod: createTestPodMetrics(),
+		Pod: pod,
 		Decision: decision.DecisionResult{
 			Action: decision.ActionFullReclaim,
 		},
@@ -159,7 +161,39 @@ func TestExecuteFullReclaimSuccess(t *testing.T) {
 		t.Errorf("Expected CheckpointRecord to be saved")
 	} else if writer.savedRecord.Spec.SourcePodName != "analytics-worker-xyz" {
 		t.Errorf("Saved record has incorrect pod name: %s", writer.savedRecord.Spec.SourcePodName)
+	} else if writer.savedRecord.Spec.PodSpecSnapshot != pod.PodSpecSnapshot {
+		t.Errorf("Saved record did not preserve pod spec snapshot")
 	}
+}
+
+func TestExecuteFullReclaimRecordPersistenceFailureDoesNotEvict(t *testing.T) {
+	kubelet := &mockKubeletClient{}
+	validator := NewCheckpointValidator(&mockStorage{}, nil)
+	evictor := &mockEvictor{}
+	writer := &failingRecordWriter{}
+
+	mgr := NewActionManager(kubelet, validator, evictor, nil, writer, nil)
+	res, err := mgr.Execute(context.Background(), ActionRequest{
+		Pod: createTestPodMetrics(),
+		Decision: decision.DecisionResult{
+			Action: decision.ActionFullReclaim,
+		},
+	})
+	if err == nil {
+		t.Fatal("expected record persistence failure")
+	}
+	if res.Success {
+		t.Fatal("expected failed action result")
+	}
+	if evictor.evictCalls != 0 {
+		t.Fatal("pod was evicted despite record persistence failure")
+	}
+}
+
+type failingRecordWriter struct{}
+
+func (w *failingRecordWriter) Create(context.Context, *v1alpha1.CheckpointRecord) (*v1alpha1.CheckpointRecord, error) {
+	return nil, fmt.Errorf("simulated API failure")
 }
 
 func TestExecuteFullReclaimCheckpointFailure(t *testing.T) {

@@ -2,9 +2,11 @@ package metrics
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
+	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -14,21 +16,20 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 	policylisters "k8s.io/client-go/listers/policy/v1"
 	"k8s.io/client-go/tools/cache"
-	"go.uber.org/zap"
 )
 
 // K8sInformerManager manages client-go informers for Nodes, Pods, PDBs, and controllers.
 type K8sInformerManager struct {
-	client          kubernetes.Interface
-	metricsCache    *MetricsCache
-	logger          *zap.Logger
-	factory         informers.SharedInformerFactory
-	podLister       corelisters.PodLister
-	nodeLister      corelisters.NodeLister
-	pdbLister       policylisters.PodDisruptionBudgetLister
-	rsLister        appslisters.ReplicaSetLister
-	deployLister    appslisters.DeploymentLister
-	stsLister       appslisters.StatefulSetLister
+	client       kubernetes.Interface
+	metricsCache *MetricsCache
+	logger       *zap.Logger
+	factory      informers.SharedInformerFactory
+	podLister    corelisters.PodLister
+	nodeLister   corelisters.NodeLister
+	pdbLister    policylisters.PodDisruptionBudgetLister
+	rsLister     appslisters.ReplicaSetLister
+	deployLister appslisters.DeploymentLister
+	stsLister    appslisters.StatefulSetLister
 }
 
 // NewK8sInformerManager constructs an informer manager with a default resync period.
@@ -259,6 +260,7 @@ func (m *K8sInformerManager) syncPod(pod *corev1.Pod) {
 		Phase:                   pod.Status.Phase,
 		Labels:                  pod.Labels,
 		Annotations:             pod.Annotations,
+		PodSpecSnapshot:         podSpecSnapshot(pod),
 		QoSClass:                pod.Status.QOSClass,
 		Priority:                priorityVal,
 		PriorityClassName:       pod.Spec.PriorityClassName,
@@ -293,6 +295,18 @@ func (m *K8sInformerManager) syncPod(pod *corev1.Pod) {
 	if pod.Spec.NodeName != "" {
 		m.metricsCache.RecalculateNodeHeadroom(pod.Spec.NodeName)
 	}
+}
+
+func podSpecSnapshot(pod *corev1.Pod) string {
+	if pod == nil {
+		return ""
+	}
+
+	snapshot, err := json.Marshal(pod.Spec)
+	if err != nil {
+		return ""
+	}
+	return string(snapshot)
 }
 
 // resolveDisruptionsAllowed finds any matching PDB and returns disruptionsAllowed.

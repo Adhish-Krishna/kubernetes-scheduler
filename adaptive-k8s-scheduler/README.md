@@ -98,6 +98,100 @@ adaptive-k8s-scheduler/
 
 ## Deployment & Verification
 
+Install the CRDs before applying sample custom resources. Kubernetes needs a short period to establish the new API kinds:
+
+```bash
+kubectl apply -f deployments/crds/reclaim.io_checkpointrecords.yaml \
+   -f deployments/crds/reclaim.io_reclaimpolicies.yaml
+kubectl wait --for=condition=Established --timeout=60s \
+   crd/checkpointrecords.reclaim.io crd/reclaimpolicies.reclaim.io
+kubectl apply -f deployments/crds/sample_checkpointrecord.yaml \
+   -f deployments/crds/sample_reclaimpolicy.yaml
+```
+
+Because these CRDs use a status subresource, status fields in sample manifests may need to be applied separately:
+
+```bash
+kubectl patch checkpointrecord ckpt-analytics-worker-sample -n ecommerce \
+   --subresource=status --type=merge \
+   -p '{"status":{"phase":"Ready","message":"Sample checkpoint record ready for restoration"}}'
+```
+
+### Live ecommerce metrics demo
+
+Port-forward the ecommerce Prometheus service and run the demo against a real pod:
+
+```bash
+kubectl -n ecommerce port-forward svc/prometheus 9090:9090
+go run ./cmd/demo --namespace ecommerce --selector app=worker --prometheus-url http://127.0.0.1:9090
+```
+
+The command reads pod resource requests from Kubernetes and CPU, memory, network, and QPS values from Prometheus. It samples the real pod five times, computes idle duration from those observations, and runs the analyzer, detector, and decision engine. It is read-only and does not evict or resize pods.
+
+To execute the selected action against the real pod, add `--execute`:
+
+```bash
+go run ./cmd/demo \
+   --namespace ecommerce \
+   --pod idle-checkpoint-demo \
+   --prometheus-url http://127.0.0.1:9090 \
+   --samples 7 \
+   --interval 10s \
+   --execute
+```
+
+The demo treats QPS at or below `0.1` as idle by default, matching the collector threshold and filtering small Prometheus rate noise. Override it with `--idle-qps-threshold` when needed.
+
+Execution is refused unless the final detector result is `IDLE`. A `SOFT_RECLAIM` decision calls the Kubernetes pod resize subresource; a `FULL_RECLAIM` decision calls the Kubelet checkpoint API, validates the archive, persists a `CheckpointRecord`, and evicts the pod. Full reclaim additionally requires CRIU/Kubelet support and the checkpoint path to be accessible from the demo process.
+
+### Deliberately idle checkpoint demo
+
+Deploy a workload with substantial reserved capacity but no traffic or work:
+
+```bash
+kubectl apply -f deployments/demo-idle-pod.yaml
+kubectl get pod -n ecommerce -w idle-checkpoint-demo
+```
+
+Observe its real Prometheus values:
+
+```bash
+go run ./cmd/demo \
+   --namespace ecommerce \
+   --pod idle-checkpoint-demo \
+   --prometheus-url http://127.0.0.1:9090 \
+   --samples 7 \
+   --interval 10s
+```
+
+The pod is eligible only after the production collector has continuously observed CPU <= 20m, network <= 10KB/s, and QPS <= 0.1 for the configured idle duration (default: 60s). The live demo command reports the values but does not mutate the pod. The production scheduler loop performs checkpoint and eviction only when CRIU, archive storage, record persistence, and safety checks are configured.
+
+To remove the demo workload:
+
+```bash
+kubectl delete pod -n ecommerce idle-checkpoint-demo
+```
+
+Use an exact pod when needed:
+
+```bash
+go run ./cmd/demo --namespace ecommerce --pod worker-xxxxxxxxx-xxxxx --prometheus-url http://127.0.0.1:9090
+```
+
+### Request-triggered restore in Kubernetes
+
+After deploying the scheduler and exposing its HTTP service, restore a `Ready` checkpoint record with:
+
+```bash
+curl -X POST \
+   -H "Authorization: Bearer $RESTORE_API_TOKEN" \
+   "http://localhost:8081/api/v1/checkpoints/<namespace>/<checkpoint-record>/restore"
+```
+
+The controller updates the record through `Restoring` to `Restored` (or `Failed`) and creates a pod from the stored specification. This is the simulation/portable restore path; real CRIU process-state restoration still requires a node-side runtime restore implementation and shared checkpoint storage.
+
+Set `RESTORE_API_TOKEN` on the scheduler deployment before using the manual endpoint. The scheduler also checks for pending pods every 10 seconds. A pending pod must identify the workload to restore with `reclaim.io/restore-source-pod: <source-pod-name>`; the controller skips the request when no matching record exists or a replacement is already present. This automatic path currently recreates the pod from its saved specification; it does not resume the original process memory image.
+
 ### 1. Build and Load Container Image
 ```bash
 cd adaptive-k8s-scheduler
