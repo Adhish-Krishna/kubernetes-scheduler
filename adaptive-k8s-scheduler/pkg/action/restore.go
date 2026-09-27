@@ -15,8 +15,13 @@ import (
 
 // RestoreEngine handles reconstitution of pods from CheckpointRecord CRDs.
 type RestoreEngine struct {
-	client kubernetes.Interface
-	logger *zap.Logger
+	client       kubernetes.Interface
+	logger       *zap.Logger
+	statusWriter CheckpointStatusWriter
+}
+
+type CheckpointStatusWriter interface {
+	UpdateStatus(ctx context.Context, record *v1alpha1.CheckpointRecord) (*v1alpha1.CheckpointRecord, error)
 }
 
 // NewRestoreEngine creates a new restoration engine.
@@ -28,6 +33,10 @@ func NewRestoreEngine(client kubernetes.Interface, logger *zap.Logger) *RestoreE
 		client: client,
 		logger: logger,
 	}
+}
+
+func (r *RestoreEngine) SetStatusWriter(writer CheckpointStatusWriter) {
+	r.statusWriter = writer
 }
 
 // BuildRestoredPodSpec constructs a new Pod object from a CheckpointRecord.
@@ -58,6 +67,7 @@ func (r *RestoreEngine) BuildRestoredPodSpec(record *v1alpha1.CheckpointRecord) 
 			},
 		}
 	}
+	podSpec.NodeName = ""
 
 	restoredPodName := fmt.Sprintf("%s-restored-%d", record.Spec.SourcePodName, time.Now().Unix())
 	if len(restoredPodName) > 63 {
@@ -86,8 +96,28 @@ func (r *RestoreEngine) BuildRestoredPodSpec(record *v1alpha1.CheckpointRecord) 
 
 // RestorePod reconstitutes the pod and creates it in the cluster.
 func (r *RestoreEngine) RestorePod(ctx context.Context, record *v1alpha1.CheckpointRecord) (*corev1.Pod, error) {
+	if record == nil {
+		return nil, fmt.Errorf("checkpoint record is nil")
+	}
+	if record.Status.Phase != "" && record.Status.Phase != v1alpha1.CheckpointPhaseReady && record.Status.Phase != v1alpha1.CheckpointPhaseRestoring {
+		return nil, fmt.Errorf("checkpoint record %s is not Ready: %s", record.Name, record.Status.Phase)
+	}
+
+	record.Status.Phase = v1alpha1.CheckpointPhaseRestoring
+	record.Status.Message = "Restore requested"
+	if r.statusWriter != nil {
+		updated, err := r.statusWriter.UpdateStatus(ctx, record)
+		if err != nil {
+			return nil, err
+		}
+		record.ResourceVersion = updated.ResourceVersion
+	}
+
 	restoredPod, err := r.BuildRestoredPodSpec(record)
 	if err != nil {
+		if statusErr := r.markFailed(ctx, record, err); statusErr != nil {
+			return nil, fmt.Errorf("build restored pod: %w; failed to persist Failed status: %v", err, statusErr)
+		}
 		return nil, err
 	}
 
@@ -99,6 +129,10 @@ func (r *RestoreEngine) RestorePod(ctx context.Context, record *v1alpha1.Checkpo
 
 	createdPod, err := r.client.CoreV1().Pods(record.Namespace).Create(ctx, restoredPod, metav1.CreateOptions{})
 	if err != nil {
+		statusErr := r.markFailed(ctx, record, err)
+		if statusErr != nil {
+			return nil, fmt.Errorf("failed to create restored pod %s/%s: %w; failed to persist Failed status: %v", record.Namespace, restoredPod.Name, err, statusErr)
+		}
 		return nil, fmt.Errorf("failed to create restored pod %s/%s: %w", record.Namespace, restoredPod.Name, err)
 	}
 
@@ -107,6 +141,27 @@ func (r *RestoreEngine) RestorePod(ctx context.Context, record *v1alpha1.Checkpo
 	record.Status.RestoredPodName = createdPod.Name
 	record.Status.RestoredAt = &now
 	record.Status.Message = fmt.Sprintf("Successfully restored as pod %s", createdPod.Name)
+	if r.statusWriter != nil {
+		updated, err := r.statusWriter.UpdateStatus(ctx, record)
+		if err != nil {
+			return nil, err
+		}
+		record.ResourceVersion = updated.ResourceVersion
+	}
 
 	return createdPod, nil
+}
+
+func (r *RestoreEngine) markFailed(ctx context.Context, record *v1alpha1.CheckpointRecord, cause error) error {
+	record.Status.Phase = v1alpha1.CheckpointPhaseFailed
+	record.Status.FailureReason = cause.Error()
+	record.Status.Message = "Restore failed"
+	if r.statusWriter != nil {
+		updated, err := r.statusWriter.UpdateStatus(ctx, record)
+		if err != nil {
+			return err
+		}
+		record.ResourceVersion = updated.ResourceVersion
+	}
+	return nil
 }

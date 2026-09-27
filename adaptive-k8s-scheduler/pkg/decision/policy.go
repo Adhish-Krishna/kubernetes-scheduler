@@ -64,8 +64,8 @@ type Policy struct {
 // DefaultPolicy returns the standard policy matching the project implementation plan.
 func DefaultPolicy() *Policy {
 	return &Policy{
-		FullReclaimScoreThreshold: 0.35,
-		SoftReclaimScoreThreshold: 0.20,
+		FullReclaimScoreThreshold: 0.75,
+		SoftReclaimScoreThreshold: 0.50,
 
 		WeightCPU:        0.20,
 		WeightMemory:     0.20,

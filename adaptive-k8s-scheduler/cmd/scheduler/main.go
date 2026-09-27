@@ -7,13 +7,17 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
+	"github.com/finalyearproject/adaptive-k8s-scheduler/api/v1alpha1"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/action"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/analyzer"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/config"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/decision"
+	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/detector"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/metrics"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/scheduler"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/storage"
@@ -21,6 +25,7 @@ import (
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -73,10 +78,20 @@ func main() {
 	store := storage.NewLocalFSStorage("/var/lib/kubelet/checkpoints")
 	validator := action.NewCheckpointValidator(store, logger)
 	kubeletClient, _ := action.NewHTTPKubeletClient(clientset, k8sConfig, false, logger)
+	dynamicClient, err := dynamic.NewForConfig(k8sConfig)
+	if err != nil {
+		logger.Fatal("Failed to create dynamic Kubernetes client", zap.Error(err))
+	}
 	evictor := action.NewK8sPodEvictor(clientset, logger)
 	softReclaimer := action.NewSoftReclaimer(clientset, logger)
-	actionMgr := action.NewActionManager(kubeletClient, validator, evictor, softReclaimer, nil, logger)
+	recordWriter := action.NewDynamicCheckpointRecordWriter(dynamicClient)
+	actionMgr := action.NewActionManager(kubeletClient, validator, evictor, softReclaimer, recordWriter, logger)
+	restoreEngine := action.NewRestoreEngine(clientset, logger)
+	restoreEngine.SetStatusWriter(recordWriter)
 	decisionEngine := decision.NewEngine(nil)
+	detectorConfig := detector.DefaultConfig()
+	var reclaimCooldownMu sync.Mutex
+	reclaimCooldown := make(map[string]time.Time)
 
 	// 5. Adaptive Scheduler
 	adaptiveSched := scheduler.NewAdaptiveScheduler(schedCfg, clientset, cache, eventRecorder, logger)
@@ -93,8 +108,26 @@ func main() {
 		cancel()
 	}()
 
+	// Demand-triggered restore loop. A checkpoint is restored only when a pending
+	// pod exists in the same namespace, avoiding unsolicited duplicate workloads.
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := restoreForPendingDemand(ctx, clientset, recordWriter, restoreEngine, logger); err != nil {
+					logger.Warn("Demand-triggered restore check failed", zap.Error(err))
+				}
+			}
+		}
+	}()
+
 	// 6. Start HTTP Server
-	server := startHTTPServer(cfg.Collector.HTTPPort, cache, adaptiveSched, logger)
+	server := startHTTPServer(cfg.Collector.HTTPPort, cache, adaptiveSched, restoreEngine, recordWriter, os.Getenv("RESTORE_API_TOKEN"), logger)
 
 	// 7. Start Metrics Collector in background
 	go func() {
@@ -115,17 +148,30 @@ func main() {
 			case <-ticker.C:
 				allPods := cache.GetAllPods()
 				for _, pod := range allPods {
-					if !pod.IsIdle {
+					podKey := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
+					reclaimCooldownMu.Lock()
+					lastReclaimed, recentlyReclaimed := reclaimCooldown[podKey]
+					if recentlyReclaimed && time.Since(lastReclaimed) < 10*time.Minute {
+						reclaimCooldownMu.Unlock()
 						continue
 					}
+					if recentlyReclaimed {
+						delete(reclaimCooldown, podKey)
+					}
+					reclaimCooldownMu.Unlock()
+
 					window, _ := cache.GetWindow(pod.Namespace, pod.Name)
 					profile := analyzer.Analyze(pod, window, nil)
+					classification := detector.Classify(profile, detectorConfig)
+					if classification.Class != detector.ClassIdle {
+						continue
+					}
 					decisionResult := decisionEngine.Evaluate(profile, pod)
 
 					if decisionResult.Action == decision.ActionFullReclaim || decisionResult.Action == decision.ActionSoftReclaim {
 						logger.Info("Reclamation Engine evaluating action",
 							zap.String("pod", fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)),
-							zap.String("action", string(decisionResult.Action)),
+							zap.String("action", decisionResult.Action.String()),
 							zap.Float64("score", decisionResult.Score),
 						)
 						req := action.ActionRequest{
@@ -136,6 +182,12 @@ func main() {
 						if err != nil {
 							logger.Error("Reclamation action failed", zap.Error(err))
 						} else {
+							reclaimCooldownMu.Lock()
+							reclaimCooldown[podKey] = time.Now()
+							reclaimCooldownMu.Unlock()
+							if pod.NodeName != "" {
+								adaptiveSched.MarkNodeReclaimed(pod.NodeName)
+							}
 							logger.Info("Reclamation action succeeded", zap.String("message", res.Message))
 						}
 					}
@@ -164,6 +216,62 @@ func main() {
 	server.Shutdown(shutdownCtx)
 
 	logger.Info("Adaptive Scheduler shutdown cleanly")
+}
+
+func restoreForPendingDemand(
+	ctx context.Context,
+	client kubernetes.Interface,
+	records *action.DynamicCheckpointRecordWriter,
+	restoreEngine *action.RestoreEngine,
+	logger *zap.Logger,
+) error {
+	pending, err := client.CoreV1().Pods("").List(ctx, metav1.ListOptions{FieldSelector: "status.phase=Pending"})
+	if err != nil {
+		return fmt.Errorf("list pending pods: %w", err)
+	}
+
+	for _, pendingPod := range pending.Items {
+		readyRecords, err := records.ListReady(ctx, pendingPod.Namespace)
+		if err != nil {
+			return err
+		}
+		record := matchingRestoreRecord(pendingPod, readyRecords)
+		if record == nil || hasRestoredWorkload(ctx, client, pendingPod.Namespace, record.Spec.SourcePodName) {
+			continue
+		}
+		logger.Info("Pending demand detected; restoring checkpointed workload",
+			zap.String("pendingPod", fmt.Sprintf("%s/%s", pendingPod.Namespace, pendingPod.Name)),
+			zap.String("checkpointRecord", record.Name),
+		)
+		if _, err := restoreEngine.RestorePod(ctx, record); err != nil {
+			return fmt.Errorf("restore checkpoint %s/%s: %w", record.Namespace, record.Name, err)
+		}
+		return nil
+	}
+	return nil
+}
+
+func matchingRestoreRecord(pendingPod corev1.Pod, records []*v1alpha1.CheckpointRecord) *v1alpha1.CheckpointRecord {
+	sourcePod := pendingPod.Annotations["reclaim.io/restore-source-pod"]
+	if sourcePod == "" {
+		sourcePod = pendingPod.Labels["reclaim.io/restore-source-pod"]
+	}
+	if sourcePod == "" {
+		return nil
+	}
+	for _, record := range records {
+		if record.Spec.SourcePodName == sourcePod {
+			return record
+		}
+	}
+	return nil
+}
+
+func hasRestoredWorkload(ctx context.Context, client kubernetes.Interface, namespace, sourcePod string) bool {
+	pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: "reclaim.io/source-pod=" + sourcePod,
+	})
+	return err == nil && len(pods.Items) > 0
 }
 
 func runWithLeaderElection(ctx context.Context, clientset kubernetes.Interface, cfg *scheduler.SchedulerConfig, runFn func(context.Context), logger *zap.Logger) {
@@ -226,7 +334,11 @@ func buildKubeConfig(kubeconfigPath string) (*rest.Config, error) {
 	return nil, fmt.Errorf("could not locate valid kubeconfig: %w", err)
 }
 
-func startHTTPServer(port int, cache *metrics.MetricsCache, sched *scheduler.AdaptiveScheduler, logger *zap.Logger) *http.Server {
+type checkpointRecordReader interface {
+	Get(context.Context, string, string) (*v1alpha1.CheckpointRecord, error)
+}
+
+func startHTTPServer(port int, cache *metrics.MetricsCache, sched *scheduler.AdaptiveScheduler, restoreEngine *action.RestoreEngine, recordReader checkpointRecordReader, restoreToken string, logger *zap.Logger) *http.Server {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -255,6 +367,41 @@ func startHTTPServer(port int, cache *metrics.MetricsCache, sched *scheduler.Ada
 		pods := cache.GetAllPods()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(pods)
+	})
+
+	mux.HandleFunc("/api/v1/checkpoints/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || restoreEngine == nil || recordReader == nil || restoreToken == "" {
+			http.Error(w, "restore endpoint unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer "+restoreToken {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if len(parts) != 6 || parts[0] != "api" || parts[1] != "v1" || parts[2] != "checkpoints" {
+			http.Error(w, "expected /api/v1/checkpoints/{namespace}/{name}/restore", http.StatusNotFound)
+			return
+		}
+		if parts[5] != "restore" {
+			http.Error(w, "expected restore action", http.StatusNotFound)
+			return
+		}
+
+		record, err := recordReader.Get(r.Context(), parts[3], parts[4])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		pod, err := restoreEngine.RestorePod(r.Context(), record)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(pod)
 	})
 
 	mux.Handle("/metrics", promhttp.Handler())

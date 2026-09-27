@@ -94,6 +94,15 @@ func (m *ActionManager) executeFullReclaim(ctx context.Context, req ActionReques
 			break
 		}
 	}
+	if m.kubeletClient == nil {
+		return m.failResult(result, start, "full reclaim is unavailable: kubelet client is not configured")
+	}
+	if m.validator == nil {
+		return m.failResult(result, start, "full reclaim is unavailable: checkpoint validator is not configured")
+	}
+	if m.evictor == nil {
+		return m.failResult(result, start, "full reclaim is unavailable: pod evictor is not configured")
+	}
 
 	if containerName == "" {
 		err := fmt.Errorf("pod %s/%s contains no containers to checkpoint", pod.Namespace, pod.Name)
@@ -164,6 +173,10 @@ func (m *ActionManager) executeFullReclaim(ctx context.Context, req ActionReques
 	}
 
 	record := &v1alpha1.CheckpointRecord{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: v1alpha1.GroupVersion.String(),
+			Kind:       "CheckpointRecord",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ckptRecordName,
 			Namespace: pod.Namespace,
@@ -185,6 +198,7 @@ func (m *ActionManager) executeFullReclaim(ctx context.Context, req ActionReques
 			CapturedAt:          metav1.Now(),
 			OriginalRequests:    origRequests,
 			OriginalLimits:      origLimits,
+			PodSpecSnapshot:     pod.PodSpecSnapshot,
 		},
 		Status: v1alpha1.CheckpointRecordStatus{
 			Phase:   v1alpha1.CheckpointPhaseReady,
@@ -192,13 +206,14 @@ func (m *ActionManager) executeFullReclaim(ctx context.Context, req ActionReques
 		},
 	}
 
-	if m.recordWriter != nil {
-		if _, err := m.recordWriter.Create(ctx, record); err != nil {
-			m.logger.Warn("Failed writing CheckpointRecord CRD", zap.Error(err))
-		} else {
-			result.CheckpointRecordName = ckptRecordName
-		}
+	if m.recordWriter == nil {
+		return m.failResult(result, start, "checkpoint captured but cannot be evicted: record writer is not configured")
 	}
+	if _, err := m.recordWriter.Create(ctx, record); err != nil {
+		m.logger.Error("Full reclaim aborted: failed writing CheckpointRecord CRD; pod will NOT be evicted", zap.Error(err))
+		return m.failResult(result, start, fmt.Sprintf("checkpoint captured but record persistence failed: %v", err))
+	}
+	result.CheckpointRecordName = ckptRecordName
 
 	// Step 4: Evict the pod to release physical & declarative quota
 	if err := m.evictor.Evict(ctx, pod.Namespace, pod.Name); err != nil {
@@ -225,7 +240,16 @@ func (m *ActionManager) executeFullReclaim(ctx context.Context, req ActionReques
 	return result, nil
 }
 
+func (m *ActionManager) failResult(result *ActionResult, start time.Time, message string) (*ActionResult, error) {
+	result.Error = message
+	result.Duration = time.Since(start)
+	return result, fmt.Errorf("%s", message)
+}
+
 func (m *ActionManager) executeSoftReclaim(ctx context.Context, req ActionRequest, result *ActionResult, start time.Time) (*ActionResult, error) {
+	if m.softReclaimer == nil {
+		return m.failResult(result, start, "soft reclaim is unavailable: reclaimer is not configured")
+	}
 	pod := req.Pod
 	containerName := req.ContainerName
 

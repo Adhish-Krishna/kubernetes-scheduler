@@ -52,49 +52,50 @@ func (r *ReplicaInfo) Clone() *ReplicaInfo {
 
 // PodMetrics aggregates telemetry and control plane state for a single Pod.
 type PodMetrics struct {
-	Namespace          string                       `json:"namespace"`
-	Name               string                       `json:"name"`
-	UID                types.UID                    `json:"uid"`
-	NodeName           string                       `json:"nodeName"`
-	Phase              corev1.PodPhase              `json:"phase"`
-	Labels             map[string]string            `json:"labels"`
-	Annotations        map[string]string            `json:"annotations"`
+	Namespace       string            `json:"namespace"`
+	Name            string            `json:"name"`
+	UID             types.UID         `json:"uid"`
+	NodeName        string            `json:"nodeName"`
+	Phase           corev1.PodPhase   `json:"phase"`
+	Labels          map[string]string `json:"labels"`
+	Annotations     map[string]string `json:"annotations"`
+	PodSpecSnapshot string            `json:"podSpecSnapshot,omitempty"`
 
 	// K8s Control Plane State
-	QoSClass           corev1.PodQOSClass           `json:"qosClass"`          // Guaranteed, Burstable, BestEffort
-	Priority           int32                        `json:"priority"`          // Numeric priority
-	PriorityClassName  string                       `json:"priorityClassName"` // PriorityClass name
-	DisruptionsAllowed int32                        `json:"disruptionsAllowed"`// From matching PDB (-1 if no PDB)
-	Replicas           *ReplicaInfo                 `json:"replicas,omitempty"`// Owning controller replica quorum
+	QoSClass           corev1.PodQOSClass `json:"qosClass"`           // Guaranteed, Burstable, BestEffort
+	Priority           int32              `json:"priority"`           // Numeric priority
+	PriorityClassName  string             `json:"priorityClassName"`  // PriorityClass name
+	DisruptionsAllowed int32              `json:"disruptionsAllowed"` // From matching PDB (-1 if no PDB)
+	Replicas           *ReplicaInfo       `json:"replicas,omitempty"` // Owning controller replica quorum
 
 	// Container Telemetry & Specs
-	Containers         map[string]*ContainerMetrics `json:"containers"`
+	Containers map[string]*ContainerMetrics `json:"containers"`
 
 	// Aggregated Resource Requests / Limits
-	TotalRequestedCPUMillis int64                   `json:"totalRequestedCpuMillis"`
-	TotalLimitCPUMillis     int64                   `json:"totalLimitCpuMillis"`
-	TotalRequestedMemory    int64                   `json:"totalRequestedMemoryBytes"`
-	TotalLimitMemory        int64                   `json:"totalLimitMemoryBytes"`
+	TotalRequestedCPUMillis int64 `json:"totalRequestedCpuMillis"`
+	TotalLimitCPUMillis     int64 `json:"totalLimitCpuMillis"`
+	TotalRequestedMemory    int64 `json:"totalRequestedMemoryBytes"`
+	TotalLimitMemory        int64 `json:"totalLimitMemoryBytes"`
 
 	// Aggregated Real Runtime Telemetry
-	TotalUsageCPUMillicores float64                 `json:"totalUsageCpuMillicores"`
-	TotalUsageMemoryBytes   int64                   `json:"totalUsageMemoryBytes"` // Sum of working set bytes
-	TotalUsageRSSBytes      int64                   `json:"totalUsageRssBytes"`
+	TotalUsageCPUMillicores float64 `json:"totalUsageCpuMillicores"`
+	TotalUsageMemoryBytes   int64   `json:"totalUsageMemoryBytes"` // Sum of working set bytes
+	TotalUsageRSSBytes      int64   `json:"totalUsageRssBytes"`
 
 	// Network I/O & Request/QPS
-	NetworkRxBytesPerSec    float64                 `json:"networkRxBytesPerSec"`
-	NetworkTxBytesPerSec    float64                 `json:"networkTxBytesPerSec"`
-	TotalNetworkBytesSec    float64                 `json:"totalNetworkBytesSec"`
-	RequestQPS              float64                 `json:"requestQps"` // HTTP QPS or packet rate fallback
+	NetworkRxBytesPerSec float64 `json:"networkRxBytesPerSec"`
+	NetworkTxBytesPerSec float64 `json:"networkTxBytesPerSec"`
+	TotalNetworkBytesSec float64 `json:"totalNetworkBytesSec"`
+	RequestQPS           float64 `json:"requestQps"` // HTTP QPS or packet rate fallback
 
 	// Multi-Signal Idle Duration Tracking
-	IdleDuration            time.Duration           `json:"idleDuration"`
-	LastActiveTime          time.Time               `json:"lastActiveTime"`
-	IsIdle                  bool                    `json:"isIdle"`
+	IdleDuration   time.Duration `json:"idleDuration"`
+	LastActiveTime time.Time     `json:"lastActiveTime"`
+	IsIdle         bool          `json:"isIdle"`
 
 	// Telemetry Quality Metadata
-	TelemetryReady          bool                    `json:"telemetryReady"`
-	LastUpdated             time.Time               `json:"lastUpdated"`
+	TelemetryReady bool      `json:"telemetryReady"`
+	LastUpdated    time.Time `json:"lastUpdated"`
 }
 
 // Clone creates a deep copy of PodMetrics.
@@ -131,32 +132,32 @@ func (p *PodMetrics) Clone() *PodMetrics {
 
 // NodeMetrics tracks node capacity, declarative reservations, and real physical telemetry.
 type NodeMetrics struct {
-	Name                     string                 `json:"name"`
-	AllocatableCPUMillis     int64                  `json:"allocatableCpuMillis"`
-	AllocatableMemoryBytes   int64                  `json:"allocatableMemoryBytes"`
-	TotalCapacityCPUMillis   int64                  `json:"totalCapacityCpuMillis"`
-	TotalCapacityMemoryBytes int64                  `json:"totalCapacityMemoryBytes"`
+	Name                     string `json:"name"`
+	AllocatableCPUMillis     int64  `json:"allocatableCpuMillis"`
+	AllocatableMemoryBytes   int64  `json:"allocatableMemoryBytes"`
+	TotalCapacityCPUMillis   int64  `json:"totalCapacityCpuMillis"`
+	TotalCapacityMemoryBytes int64  `json:"totalCapacityMemoryBytes"`
 
 	// Declaratively scheduled requests (sum of pods on node)
-	AllocatedRequestedCPU    int64                  `json:"allocatedRequestedCpuMillis"`
-	AllocatedRequestedMem    int64                  `json:"allocatedRequestedMemBytes"`
+	AllocatedRequestedCPU int64 `json:"allocatedRequestedCpuMillis"`
+	AllocatedRequestedMem int64 `json:"allocatedRequestedMemBytes"`
 
 	// Real physical telemetry (Prometheus / cAdvisor / NodeExporter)
-	ActualUsageCPUMillicores float64                `json:"actualUsageCpuMillicores"`
-	ActualUsageMemoryBytes   int64                  `json:"actualUsageMemoryBytes"`
+	ActualUsageCPUMillicores float64 `json:"actualUsageCpuMillicores"`
+	ActualUsageMemoryBytes   int64   `json:"actualUsageMemoryBytes"`
 
 	// Real Headroom for Custom Scheduler (Allocatable - ActualUsage)
-	RealFreeCPUMillicores    float64                `json:"realFreeCpuMillicores"`
-	RealFreeMemoryBytes      int64                  `json:"realFreeMemoryBytes"`
+	RealFreeCPUMillicores float64 `json:"realFreeCpuMillicores"`
+	RealFreeMemoryBytes   int64   `json:"realFreeMemoryBytes"`
 
 	// Node Health & Pressure Conditions
-	Conditions               []corev1.NodeCondition `json:"conditions"`
-	IsReady                  bool                   `json:"isReady"`
-	HasMemoryPressure        bool                   `json:"hasMemoryPressure"`
-	HasDiskPressure          bool                   `json:"hasDiskPressure"`
-	HasPIDPressure           bool                   `json:"hasPidPressure"`
-	PodCount                 int                    `json:"podCount"`
-	LastUpdated              time.Time              `json:"lastUpdated"`
+	Conditions        []corev1.NodeCondition `json:"conditions"`
+	IsReady           bool                   `json:"isReady"`
+	HasMemoryPressure bool                   `json:"hasMemoryPressure"`
+	HasDiskPressure   bool                   `json:"hasDiskPressure"`
+	HasPIDPressure    bool                   `json:"hasPidPressure"`
+	PodCount          int                    `json:"podCount"`
+	LastUpdated       time.Time              `json:"lastUpdated"`
 }
 
 // Clone creates a deep copy of NodeMetrics.
@@ -200,25 +201,25 @@ func (cs *ClusterSnapshot) Clone() *ClusterSnapshot {
 
 // MetricSample represents an instantaneous telemetry measurement for smoothing.
 type MetricSample struct {
-	Timestamp            time.Time
-	CPUMillicores        float64
-	MemoryWorkingSet     int64
-	MemoryRSS            int64
-	NetworkBytesPerSec   float64
-	RequestQPS           float64
+	Timestamp          time.Time
+	CPUMillicores      float64
+	MemoryWorkingSet   int64
+	MemoryRSS          int64
+	NetworkBytesPerSec float64
+	RequestQPS         float64
 }
 
 // CollectorConfig holds tuning and operational parameters for metrics collection.
 type CollectorConfig struct {
-	PrometheusURL       string        `json:"prometheusUrl"`
-	ScrapeInterval      time.Duration `json:"scrapeInterval"`
-	HTTPTimeout         time.Duration `json:"httpTimeout"`
-	WindowSize          int           `json:"windowSize"`
-	IdleCPUThreshold    float64       `json:"idleCpuThreshold"`    // Millicores (e.g. 20.0 = 0.02 cores)
-	IdleNetThreshold    float64       `json:"idleNetThreshold"`    // Bytes/sec (e.g. 10240 = 10 KB/s)
-	IdleQPSThreshold    float64       `json:"idleQpsThreshold"`    // Requests/sec (e.g. 0.1)
-	IdleMinDuration     time.Duration `json:"idleMinDuration"`     // Minimum duration to qualify as idle
-	HTTPPort            int           `json:"httpPort"`
+	PrometheusURL    string        `json:"prometheusUrl"`
+	ScrapeInterval   time.Duration `json:"scrapeInterval"`
+	HTTPTimeout      time.Duration `json:"httpTimeout"`
+	WindowSize       int           `json:"windowSize"`
+	IdleCPUThreshold float64       `json:"idleCpuThreshold"` // Millicores (e.g. 20.0 = 0.02 cores)
+	IdleNetThreshold float64       `json:"idleNetThreshold"` // Bytes/sec (e.g. 10240 = 10 KB/s)
+	IdleQPSThreshold float64       `json:"idleQpsThreshold"` // Requests/sec (e.g. 0.1)
+	IdleMinDuration  time.Duration `json:"idleMinDuration"`  // Minimum duration to qualify as idle
+	HTTPPort         int           `json:"httpPort"`
 }
 
 // DefaultCollectorConfig returns standard production defaults.
