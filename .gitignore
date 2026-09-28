@@ -27,6 +27,14 @@ out/
 *.swp
 
 # OS Files
-.DS_Store
-Thumbs.db
 *.deb
+
+# Python virtual environments
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Datasets
+dataset/*.csv
+dataset/*.tar.gz
