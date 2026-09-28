@@ -1,0 +1,17 @@
+{
+  "ridge_linear": {
+    "r2_score": 0.488,
+    "mae": 0.0983,
+    "rmse": 0.1383,
+    "safe_classification_auc": 0.5487
+  },
+  "xgboost_baseline": {
+    "r2_score": 0.8493,
+    "mae": 0.0422,
+    "rmse": 0.075
+  },
+  "comparison": {
+    "relative_linear_retention_percent": 57.46,
+    "latency_go_vs_python_ratio": "> 1000x faster"
+  }
+}

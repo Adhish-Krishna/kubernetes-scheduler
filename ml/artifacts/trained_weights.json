@@ -1,0 +1,75 @@
+{
+  "metadata": {
+    "generated_at": "2026-09-28T10:49:53.628373+00:00",
+    "dataset": "Google Borg 2019 Traces (derrickmwiti/google-2019-cluster-sample)",
+    "sample_size": 405120,
+    "model_type": "Ensemble Bounded Ridge NNLS + XGBoost Feature Importance",
+    "target_formulation": "Multi-Criteria Net Reclaim Utility (Formulation B)",
+    "precision_decimals": 9,
+    "metrics": {
+      "ridge_linear": {
+        "r2_score": 0.488,
+        "mae": 0.0983,
+        "rmse": 0.1383,
+        "safe_classification_auc": 0.5487
+      },
+      "xgboost_baseline": {
+        "r2_score": 0.8493,
+        "mae": 0.0422,
+        "rmse": 0.075
+      },
+      "comparison": {
+        "relative_linear_retention_percent": 57.46,
+        "latency_go_vs_python_ratio": "> 1000x faster"
+      }
+    }
+  },
+  "weights": {
+    "WeightCPU": 0.18361715,
+    "WeightMemory": 0.259222924,
+    "WeightBenefit": 0.251511995,
+    "WeightIdle": 0.071811839,
+    "WeightReplica": 0.005768108,
+    "WeightPriority": 0.05678033,
+    "WeightState": 0.117221444,
+    "WeightPDB": 0.04359725,
+    "WeightCheckpoint": 0.01046896
+  },
+  "linear_weights": {
+    "WeightCPU": 0.215780208,
+    "WeightMemory": 0.298210924,
+    "WeightBenefit": 0.336766131,
+    "WeightIdle": 0.009713887,
+    "WeightReplica": 0.009713887,
+    "WeightPriority": 0.009713887,
+    "WeightState": 0.100673302,
+    "WeightPDB": 0.009713887,
+    "WeightCheckpoint": 0.009713887
+  },
+  "xgboost_weights": {
+    "WeightCPU": 0.151454091,
+    "WeightMemory": 0.220234923,
+    "WeightBenefit": 0.166257858,
+    "WeightIdle": 0.133909792,
+    "WeightReplica": 0.001822329,
+    "WeightPriority": 0.103846774,
+    "WeightState": 0.133769587,
+    "WeightPDB": 0.077480614,
+    "WeightCheckpoint": 0.011224032
+  },
+  "raw_coefficients": {
+    "WeightCPU": 0.111067905,
+    "WeightMemory": 0.153497222,
+    "WeightBenefit": 0.17334263,
+    "WeightIdle": 0.005,
+    "WeightReplica": 0.005,
+    "WeightPriority": 0.005,
+    "WeightState": 0.051819269,
+    "WeightPDB": 0.005,
+    "WeightCheckpoint": 0.005
+  },
+  "validation": {
+    "sum": 1.0,
+    "factors_count": 9
+  }
+}

@@ -88,7 +88,47 @@ func main() {
 	actionMgr := action.NewActionManager(kubeletClient, validator, evictor, softReclaimer, recordWriter, logger)
 	restoreEngine := action.NewRestoreEngine(clientset, logger)
 	restoreEngine.SetStatusWriter(recordWriter)
-	decisionEngine := decision.NewEngine(nil)
+
+	// Decision Policy: checks dynamic WEIGHTS_FILE_PATH, local ml/artifacts, or ConfigMap mount
+	weightsPath := os.Getenv("WEIGHTS_FILE_PATH")
+	if weightsPath == "" {
+		if _, statErr := os.Stat("ml/artifacts/trained_weights.json"); statErr == nil {
+			weightsPath = "ml/artifacts/trained_weights.json"
+		} else if _, statErr := os.Stat("../ml/artifacts/trained_weights.json"); statErr == nil {
+			weightsPath = "../ml/artifacts/trained_weights.json"
+		} else {
+			weightsPath = "/etc/scheduler/trained_weights.json"
+		}
+	}
+	var decisionPolicy *decision.Policy
+	if _, statErr := os.Stat(weightsPath); statErr == nil {
+		loadedPolicy, loadErr := decision.LoadPolicyFromWeightsFile(weightsPath)
+		if loadErr != nil {
+			logger.Warn("Failed to load weights from file, falling back to compiled DefaultPolicy",
+				zap.String("weightsFile", weightsPath),
+				zap.Error(loadErr),
+			)
+			decisionPolicy = decision.DefaultPolicy()
+		} else {
+			logger.Info("Successfully loaded data-backed weights from file",
+				zap.String("weightsFile", weightsPath),
+				zap.Float64("WeightCPU", loadedPolicy.WeightCPU),
+				zap.Float64("WeightMemory", loadedPolicy.WeightMemory),
+				zap.Float64("WeightBenefit", loadedPolicy.WeightBenefit),
+				zap.Float64("WeightIdle", loadedPolicy.WeightIdle),
+			)
+			decisionPolicy = loadedPolicy
+		}
+	} else {
+		decisionPolicy = decision.DefaultPolicy()
+		logger.Info("Using compiled DefaultPolicy weights",
+			zap.Float64("WeightCPU", decisionPolicy.WeightCPU),
+			zap.Float64("WeightMemory", decisionPolicy.WeightMemory),
+			zap.Float64("WeightBenefit", decisionPolicy.WeightBenefit),
+		)
+	}
+
+	decisionEngine := decision.NewEngine(decisionPolicy)
 	detectorConfig := detector.DefaultConfig()
 	var reclaimCooldownMu sync.Mutex
 	reclaimCooldown := make(map[string]time.Time)
