@@ -147,9 +147,47 @@ Net_Utility = beta_1 * Score_CPU
 
 ### Benchmark Model: XGBoost (Comparative Baseline)
 To demonstrate rigorous methodology for evaluation and project presentation:
-* We also train an **XGBoost Regressor** on the exact same dataset.
-* We compare the R-squared score of the Linear Ridge model against the non-linear XGBoost model.
-* **Expected Outcome:** Demonstrating that the lightweight linear formula captures ~95%+ of the predictive power of a complex tree ensemble while maintaining microsecond evaluation speed.
+* We train an **XGBoost Regressor** on the exact same dataset as a high-capacity, non-linear baseline.
+* We compare the predictive accuracy and feature importance rankings between the linear model and the tree ensemble to understand non-linear workload interactions.
+
+---
+
+### Ensemble Blending: 50/50 Hybrid Model (Final Weights)
+
+To combine the mathematical guarantees of linear models with the non-linear safety awareness of gradient-boosted trees, the final decision weights are derived using an **Equal-Weighted Model Averaging Ensemble**:
+
+#### 1. Mathematical Blending Concept:
+For each decision factor $i$:
+```text
+Weight_Blended[i] = 0.5 * Weight_Linear[i] + 0.5 * Weight_XGBoost[i]
+```
+
+#### 2. Conceptual Roles of the Two Models:
+
+| Feature Symbol | Factor Name | Role in Linear Model (Ridge NNLS) | Role in Tree Model (XGBoost) | Why Blending is Conceptually Superior |
+|---|---|---|---|---|
+| `score_cpu` | CPU Waste | Measures direct linear slope of CPU headroom saved. | Evaluates CPU waste in combination with workload priority. | Captures both direct core savings and operational safety. |
+| `score_memory` | Memory Waste | Captures direct linear value of reclaimed RAM. | Identifies memory as the primary uncompressible constraint. | Balances high volume reclamation with cluster stability. |
+| `score_benefit` | Reclaim Benefit | Prioritizes absolute core/memory volume recovered. | Evaluates volume threshold necessary to justify an action. | Prevents reclaiming trivial workloads while rewarding large gains. |
+| `score_idle` | Idle Duration | Estimates average linear contribution of uptime. | Evaluates conditional dormancy (idle only matters if waste exists). | Tree model prevents premature reclamation of spiky containers. |
+| `score_replica` | Replica Redundancy | Linear availability guardrail. | Evaluates redundancy as an availability prerequisite. | Blending ensures single-replica workloads remain protected. |
+| `score_priority` | Priority Inversion | Continuous linear penalty for high priority. | Acts as a sharp step-function cutoff gate for critical pods. | Prevents eviction of system daemons while allowing batch yield. |
+| `score_state` | Workload Statefulness | Linear risk adjustment for batch vs. services. | Splits decisions based on latency sensitivity tiers. | Strongly protects stateful, latency-sensitive services. |
+| `score_pdb` | Disruption Budget | Linear disruption headroom credit. | Enforces non-disruption availability rules. | Guarantees compliance with Kubernetes disruption policies. |
+| `score_checkpoint` | Checkpointability | Linear capability multiplier. | Action selector (full reclaim vs. soft reclaim fallback). | Weights workloads that support CRIU live state preservation. |
+
+#### 3. Exact 9-Decimal Normalization & Delta Compensation Concept:
+In computer arithmetic, floating-point rounding at 9 decimal places can introduce a microscopic drift (e.g., $0.999999999$ or $1.000000001$). 
+To ensure strict mathematical consistency across the scheduler:
+1. Each model's coefficients are normalized so their individual sums equal $1.0$.
+2. The 50/50 arithmetic blend is rounded to 9 decimal places.
+3. The remaining rounding difference ($\Delta = 1.0 - \sum \text{Weights}$) is added to the largest single weight.
+4. **Result:** `sum(Weight_Blended) == 1.000000000` strictly, eliminating any floating-point drift.
+
+#### 4. Theoretical & Statistical Justification for 50/50 Blending:
+* **Bivariate Complementarity:** Linear models measure **first-order resource volume** (cores and gigabytes saved), whereas Tree models measure **higher-order safety gates** (idle duration and priority thresholds).
+* **Elimination of Model Blind Spots:** Linear models can under-weight conditional metrics like idle duration, while tree models can under-weight continuous metrics like replica availability. Averaging both models eliminates individual blind spots without human bias.
+* **Control Plane Performance:** Offline ensembling produces a fixed set of weights that compile into pure Go constants, delivering **sub-microsecond ($< 0.001\text{ ms}$)** evaluation speed in the Kubernetes control plane.
 
 ---
 
@@ -158,53 +196,64 @@ To demonstrate rigorous methodology for evaluation and project presentation:
 ```text
 +-------------------------------------------------------------+
 |                 dataset/borg_traces_data.csv                |
-|             (1,324,696 Google Borg Trace Records)           |
+|             (Google Borg Production Trace Records)          |
 +-------------------------------------------------------------+
                               |
-                              v  (scripts/train_weights.py)
+                              v  (ml/extract.py)
 +-------------------------------------------------------------+
-|  1. Parse nested JSON fields (request, usage)               |
+|  1. Fast Vectorized Regex Extraction (JSON requests/usages) |
 |  2. Compute 9 Decision Factors in [0.0, 1.0]                |
-|  3. Compute Formulation B Target: Net_Utility               |
+|  3. Compute Multi-Criteria Target: Net_Utility              |
 +-------------------------------------------------------------+
                               |
               +---------------+---------------+
               |                               |
-              v (Primary)                     v (Benchmark)
-+-----------------------------+ +-----------------------------+
-|   Ridge Regression (NNLS)   | |      XGBoost Regressor      |
-|  Learns linear coefficients | |   Evaluates non-linear upper|
-|   beta_1 ... beta_9         | |   bound R^2 & SHAP values   |
-+-----------------------------+ +-----------------------------+
-              |                               |
               v                               v
 +-----------------------------+ +-----------------------------+
-|   Normalize: sum(W_i) = 1.0 | |    Compare R^2 Metrics      |
+|   Bounded Ridge NNLS (50%)  | |    XGBoost Regressor (50%)  |
+| Linear resource scaling     | | Non-linear safety thresholds|
+| (First-order volume slope)  | | (Higher-order decision tree)|
 +-----------------------------+ +-----------------------------+
-              |
-              v
+              |                               |
+              +---------------+---------------+
+                              |
+                              v  (ml/train.py)
 +-------------------------------------------------------------+
-|               Generate Go Struct Code Snippet               |
+|          50/50 Ensemble Model Averaging Blending            |
+|       9-Decimal Normalization & Delta Compensation          |
+|                 sum(W_i) = 1.000000000                      |
 +-------------------------------------------------------------+
                               |
-                              v
+                              v  (ml/export.py)
 +-------------------------------------------------------------+
-|            Update pkg/decision/policy.go                    |
-|       Validate with: go test -v ./pkg/decision/...          |
+|    Export ml/artifacts/trained_weights.json & Go Struct     |
 +-------------------------------------------------------------+
+                              |
+              +---------------+---------------+
+              |                               |
+              v (Tier 1: Compiled)            v (Tier 2: Dynamic)
++-----------------------------+ +-----------------------------+
+|  pkg/decision/policy.go     | |  pkg/decision/weights.go    |
+|  Native Go Defaults (< 1us) | |  ConfigMap / JSON loader    |
++-----------------------------+ +-----------------------------+
 ```
 
 ---
 
-## 7. Deliverables & Next Steps
+## 7. Deliverables & Production Assets
 
-1. **Python Training Script (`scripts/train_weights.py`):**
-   * Streams/samples 100,000 rows from `dataset/borg_traces_data.csv`.
-   * Computes the 9 normalized features and the `Net_Utility` target.
-   * Fits Ridge Regression with non-negative constraints.
-   * Fits XGBoost as the non-linear baseline.
-   * Outputs comparison metrics (R-squared, MAE) and prints the ready-to-paste Go struct.
-2. **Go Code Update:**
-   * Update `DefaultPolicy()` in `pkg/decision/policy.go` with the trained weights.
-3. **Verification:**
-   * Run the Go test suite to ensure all unit tests pass with the data-driven weights.
+1. **Python Training Pipeline (`ml/`):**
+   * `ml/extract.py`: Fast vectorized parser for Borg traces into 9 normalized features.
+   * `ml/train.py`: Fits Bounded NNLS + XGBoost and computes 9-decimal blended ensemble weights.
+   * `ml/evaluate.py`: Generates R^2, MAE, and comparison metrics.
+   * `ml/export.py`: Serializes models and exports `trained_weights.json`.
+   * `ml/run_training.py`: Single-command master orchestrator (`python ml/run_training.py --all`).
+2. **Weight Storage Artifacts (`ml/artifacts/`):**
+   * `ml/artifacts/trained_weights.json`: Version-controlled JSON with metadata and 9-decimal weights.
+   * `ml/artifacts/training_metrics.json`: R^2, MAE, and evaluation benchmarks.
+   * `ml/artifacts/ridge_model.joblib`: Serialized Scikit-learn model.
+   * `ml/artifacts/xgboost_model.json`: Serialized XGBoost tree ensemble.
+3. **Scheduler Integration:**
+   * `adaptive-k8s-scheduler/pkg/decision/policy.go`: Compiled 9-decimal native defaults in `DefaultPolicy()`.
+   * `adaptive-k8s-scheduler/pkg/decision/weights.go`: Dynamic ConfigMap JSON loader with validation.
+   * `adaptive-k8s-scheduler/pkg/decision/weights_test.go`: Unit tests confirming sum == 1.000000000 and JSON loading.
