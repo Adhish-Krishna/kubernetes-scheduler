@@ -99,7 +99,7 @@ func (r *RestoreEngine) RestorePod(ctx context.Context, record *v1alpha1.Checkpo
 	if record == nil {
 		return nil, fmt.Errorf("checkpoint record is nil")
 	}
-	if record.Status.Phase != "" && record.Status.Phase != v1alpha1.CheckpointPhaseReady && record.Status.Phase != v1alpha1.CheckpointPhaseRestoring {
+	if record.Status.Phase != "" && record.Status.Phase != v1alpha1.CheckpointPhaseCheckpointed && record.Status.Phase != v1alpha1.CheckpointPhaseReady && record.Status.Phase != v1alpha1.CheckpointPhaseRestoring {
 		return nil, fmt.Errorf("checkpoint record %s is not Ready: %s", record.Name, record.Status.Phase)
 	}
 

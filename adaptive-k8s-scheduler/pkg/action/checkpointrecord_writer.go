@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 )
 
@@ -93,11 +94,35 @@ func (w *DynamicCheckpointRecordWriter) ListReady(ctx context.Context, namespace
 		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(objects.Items[index].Object, record); err != nil {
 			return nil, fmt.Errorf("convert checkpoint record %s: %w", objects.Items[index].GetName(), err)
 		}
-		if record.Status.Phase == v1alpha1.CheckpointPhaseReady || record.Status.Phase == v1alpha1.CheckpointPhaseRestoring {
+		if record.Status.Phase == v1alpha1.CheckpointPhaseCheckpointed || record.Status.Phase == v1alpha1.CheckpointPhaseReady || record.Status.Phase == v1alpha1.CheckpointPhaseRestoring {
 			ready = append(ready, record)
 		}
 	}
 	return ready, nil
+}
+
+// FindCheckpointed returns a verified checkpoint for a source pod, if one exists.
+func (w *DynamicCheckpointRecordWriter) FindCheckpointed(ctx context.Context, namespace, podName string, podUID types.UID) (*v1alpha1.CheckpointRecord, error) {
+	if w == nil || w.client == nil {
+		return nil, fmt.Errorf("checkpoint record dynamic client is not configured")
+	}
+	objects, err := w.client.Resource(checkpointRecordResource).Namespace(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("list checkpoint records in %s: %w", namespace, err)
+	}
+	for index := range objects.Items {
+		record := new(v1alpha1.CheckpointRecord)
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(objects.Items[index].Object, record); err != nil {
+			return nil, fmt.Errorf("convert checkpoint record %s: %w", objects.Items[index].GetName(), err)
+		}
+		if record.Status.Phase != v1alpha1.CheckpointPhaseCheckpointed && record.Status.Phase != v1alpha1.CheckpointPhaseReady {
+			continue
+		}
+		if record.Spec.SourcePodName == podName && (podUID == "" || record.Spec.SourcePodUID == string(podUID)) {
+			return record, nil
+		}
+	}
+	return nil, nil
 }
 
 func (w *DynamicCheckpointRecordWriter) UpdateStatus(ctx context.Context, record *v1alpha1.CheckpointRecord) (*v1alpha1.CheckpointRecord, error) {

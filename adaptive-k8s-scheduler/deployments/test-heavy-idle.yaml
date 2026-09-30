@@ -10,6 +10,7 @@ metadata:
 spec:
   schedulerName: adaptive-scheduler
   restartPolicy: Never
+  automountServiceAccountToken: false
   securityContext:
     seccompProfile:
       type: Unconfined

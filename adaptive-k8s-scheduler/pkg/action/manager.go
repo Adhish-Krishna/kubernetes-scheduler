@@ -11,11 +11,16 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // CheckpointRecordWriter abstracts committing CheckpointRecord CRDs to Kubernetes.
 type CheckpointRecordWriter interface {
 	Create(ctx context.Context, record *v1alpha1.CheckpointRecord) (*v1alpha1.CheckpointRecord, error)
+}
+
+type CheckpointStateStore interface {
+	FindCheckpointed(ctx context.Context, namespace, podName string, podUID types.UID) (*v1alpha1.CheckpointRecord, error)
 }
 
 // ActionManager orchestrates execution of Full Reclaim, Soft Reclaim, and Keep decisions.
@@ -63,6 +68,25 @@ func (m *ActionManager) Execute(ctx context.Context, req ActionRequest) (*Action
 		PodName:      req.Pod.Name,
 		Action:       req.Decision.Action,
 		ExecutedAt:   start,
+	}
+
+	if req.Decision.Action != decision.ActionKeep && req.Pod.Phase != "" && req.Pod.Phase != corev1.PodRunning {
+		if stateStore, ok := m.recordWriter.(CheckpointStateStore); ok {
+			record, err := stateStore.FindCheckpointed(ctx, req.Pod.Namespace, req.Pod.Name, req.Pod.UID)
+			if err != nil {
+				return m.failResult(result, start, fmt.Sprintf("lookup checkpoint state: %v", err))
+			}
+			if record != nil {
+				result.Success = true
+				result.CheckpointRecordName = record.Name
+				result.CheckpointPath = record.Spec.CheckpointPath
+				result.CheckpointSizeBytes = record.Spec.CheckpointSizeBytes
+				result.Message = fmt.Sprintf("already checkpointed: %s", record.Spec.CheckpointPath)
+				result.Duration = time.Since(start)
+				return result, nil
+			}
+		}
+		return m.failResult(result, start, fmt.Sprintf("pod is %s; restartPolicy=%s; containerExitCode=%d", req.Pod.Phase, req.Pod.RestartPolicy, req.Pod.ContainerExitCode))
 	}
 
 	switch req.Decision.Action {
@@ -132,9 +156,10 @@ func (m *ActionManager) executeFullReclaim(ctx context.Context, req ActionReques
 	}
 
 	// Step 2: Determine archive path and validate archive integrity
-	archivePath := fmt.Sprintf("/var/lib/kubelet/checkpoints/checkpoint-%s_%s-%s.tar", pod.Namespace, pod.Name, containerName)
-	if resp != nil && len(resp.Items) > 0 {
-		archivePath = resp.Items[0]
+	archivePath := fmt.Sprintf("%s/checkpoint-%s_%s-%s.tar", CheckpointDirectory(), pod.Namespace, pod.Name, containerName)
+	artifact := resp.Artifact()
+	if artifact.Path != "" {
+		archivePath = artifact.Path
 	}
 
 	archiveMeta, err := m.validator.ValidateArchive(archivePath)
@@ -146,6 +171,10 @@ func (m *ActionManager) executeFullReclaim(ctx context.Context, req ActionReques
 		result.Error = fmt.Sprintf("archive verification failed: %v", err)
 		result.Duration = time.Since(start)
 		return result, fmt.Errorf("archive validation failed: %w", err)
+	}
+	if artifact.SizeBytes > 0 && artifact.SizeBytes != archiveMeta.SizeBytes {
+		err := fmt.Errorf("checkpoint archive size mismatch: kubelet reported %d bytes, found %d bytes", artifact.SizeBytes, archiveMeta.SizeBytes)
+		return m.failResult(result, start, err.Error())
 	}
 
 	result.CheckpointPath = archiveMeta.Path
@@ -201,8 +230,8 @@ func (m *ActionManager) executeFullReclaim(ctx context.Context, req ActionReques
 			PodSpecSnapshot:     pod.PodSpecSnapshot,
 		},
 		Status: v1alpha1.CheckpointRecordStatus{
-			Phase:   v1alpha1.CheckpointPhaseReady,
-			Message: "Container state captured and verified",
+			Phase:   v1alpha1.CheckpointPhaseCheckpointed,
+			Message: "Container state captured and verified; source pod lifecycle pending",
 		},
 	}
 
@@ -214,6 +243,13 @@ func (m *ActionManager) executeFullReclaim(ctx context.Context, req ActionReques
 		return m.failResult(result, start, fmt.Sprintf("checkpoint captured but record persistence failed: %v", err))
 	}
 	result.CheckpointRecordName = ckptRecordName
+
+	if pod.Replicas != nil && pod.Replicas.OwnerKind != "" {
+		result.Success = true
+		result.Message = fmt.Sprintf("checkpointed; lifecycle release deferred for owner %s", pod.Replicas.OwnerKind)
+		result.Duration = time.Since(start)
+		return result, nil
+	}
 
 	// Step 4: Evict the pod to release physical & declarative quota
 	if err := m.evictor.Evict(ctx, pod.Namespace, pod.Name); err != nil {

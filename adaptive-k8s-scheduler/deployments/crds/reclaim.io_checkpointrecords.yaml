@@ -108,6 +108,7 @@ spec:
                   type: string
                   enum:
                     - Pending
+                    - Checkpointed
                     - Ready
                     - Restoring
                     - Restored

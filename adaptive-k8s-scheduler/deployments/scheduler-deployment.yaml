@@ -62,6 +62,9 @@ spec:
           imagePullPolicy: IfNotPresent
           command:
             - /bin/adaptive-scheduler
+          env:
+            - name: CHECKPOINT_DIR
+              value: /var/lib/kubelet/checkpoints
           args:
             - "--scheduler-name=adaptive-scheduler"
             - "--leader-elect=true"

@@ -19,6 +19,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /bin/adaptive-scheduler ./cmd/scheduler
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /bin/metrics-collector ./cmd/metrics-collector
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /bin/adaptive-scheduler-demo ./cmd/demo
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /bin/adaptive-restore-spike ./cmd/restore-spike
 
 # -----------------------------------------------------------------------------
 # Stage 2: Minimal runtime image
@@ -32,6 +33,7 @@ WORKDIR /
 COPY --from=builder /bin/adaptive-scheduler /bin/adaptive-scheduler
 COPY --from=builder /bin/metrics-collector /bin/metrics-collector
 COPY --from=builder /bin/adaptive-scheduler-demo /bin/adaptive-scheduler-demo
+COPY --from=builder /bin/adaptive-restore-spike /bin/adaptive-restore-spike
 
 USER 65532:65532
 

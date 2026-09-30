@@ -27,6 +27,13 @@ func main() {
 	mux.HandleFunc("/api/simulate", handler.HandleSimulate)
 	mux.HandleFunc("/api/simulate/workload", handler.HandleSimulateWorkload)
 
+	// Active Workload / Cluster Routes
+	mux.HandleFunc("/api/cluster/status", handler.Cluster().HandleClusterStatus)
+	mux.HandleFunc("/api/workloads", handler.Cluster().HandleWorkloads)
+	mux.HandleFunc("/api/reclaim/config", handler.Cluster().HandleReclaimConfig)
+	mux.HandleFunc("/api/workloads/checkpoint", handler.Cluster().HandleCheckpoint)
+	mux.HandleFunc("/api/workloads/restore", handler.Cluster().HandleRestore)
+
 	// Resolve frontend static files directory
 	frontendDir := findFrontendDir()
 	if frontendDir != "" {

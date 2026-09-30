@@ -5,6 +5,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -52,14 +53,17 @@ func (r *ReplicaInfo) Clone() *ReplicaInfo {
 
 // PodMetrics aggregates telemetry and control plane state for a single Pod.
 type PodMetrics struct {
-	Namespace       string            `json:"namespace"`
-	Name            string            `json:"name"`
-	UID             types.UID         `json:"uid"`
-	NodeName        string            `json:"nodeName"`
-	Phase           corev1.PodPhase   `json:"phase"`
-	Labels          map[string]string `json:"labels"`
-	Annotations     map[string]string `json:"annotations"`
-	PodSpecSnapshot string            `json:"podSpecSnapshot,omitempty"`
+	Namespace         string                  `json:"namespace"`
+	Name              string                  `json:"name"`
+	UID               types.UID               `json:"uid"`
+	NodeName          string                  `json:"nodeName"`
+	Phase             corev1.PodPhase         `json:"phase"`
+	RestartPolicy     corev1.RestartPolicy    `json:"restartPolicy"`
+	ContainerExitCode int32                   `json:"containerExitCode,omitempty"`
+	OwnerReferences   []metav1.OwnerReference `json:"ownerReferences,omitempty"`
+	Labels            map[string]string       `json:"labels"`
+	Annotations       map[string]string       `json:"annotations"`
+	PodSpecSnapshot   string                  `json:"podSpecSnapshot,omitempty"`
 
 	// K8s Control Plane State
 	QoSClass           corev1.PodQOSClass `json:"qosClass"`           // Guaranteed, Burstable, BestEffort
