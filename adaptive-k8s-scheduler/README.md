@@ -180,6 +180,14 @@ go run ./cmd/demo --namespace ecommerce --pod worker-xxxxxxxxx-xxxxx --prometheu
 
 ### Request-triggered restore in Kubernetes
 
+Checkpointing is lifecycle-sensitive: the kubelet/runtime may stop the source container after a successful checkpoint. The controller records the verified archive as `Checkpointed` before releasing a bare Pod. For Pods owned by a Deployment, Job, or other controller, lifecycle release is deferred so the owner cannot immediately recreate the source workload. `restartPolicy: Never` is recommended for one-shot checkpoint probes; `Always` or `OnFailure` can cause the controller to restart a source after runtime termination and should be tested only with an explicit owner strategy.
+
+The restore spike is deliberately separate from the scheduler restore path. It asks K3s containerd to import a CRIU tar as an OCI image and creates a probe Pod only if containerd accepts the import. A CRIU checkpoint tar is not necessarily an OCI image, so rejection is reported as unsupported rather than treated as a successful restore:
+
+```bash
+go run ./cmd/restore-spike --tar /var/lib/rancher/k3s/agent/kubelet/checkpoints/checkpoint.tar
+```
+
 After deploying the scheduler and exposing its HTTP service, restore a `Ready` checkpoint record with:
 
 ```bash

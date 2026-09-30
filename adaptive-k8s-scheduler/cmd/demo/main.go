@@ -181,12 +181,12 @@ func executeAction(ctx context.Context, config *rest.Config, client kubernetes.I
 	recordWriter := action.NewDynamicCheckpointRecordWriter(dynamicClient)
 	softReclaimer := action.NewSoftReclaimer(client, zap.NewNop())
 	evictor := action.NewK8sPodEvictor(client, zap.NewNop())
-	kubeletClient, err := action.NewHTTPKubeletClient(client, config, false, zap.NewNop())
+	kubeletClient, err := action.NewHTTPKubeletClient(client, config, true, zap.NewNop())
 	if err != nil {
 		return nil, fmt.Errorf("create kubelet client: %w", err)
 	}
 	validator := action.NewCheckpointValidator(
-		storage.NewLocalFSStorage("/var/lib/kubelet/checkpoints"),
+		storage.NewLocalFSStorage(action.CheckpointDirectory()),
 		zap.NewNop(),
 	)
 	manager := action.NewActionManager(kubeletClient, validator, evictor, softReclaimer, recordWriter, zap.NewNop())
@@ -231,9 +231,13 @@ func podMetricsFromKubernetesPod(pod *corev1.Pod) *metrics.PodMetrics {
 	result := &metrics.PodMetrics{
 		Namespace: pod.Namespace, Name: pod.Name, UID: pod.UID,
 		NodeName: pod.Spec.NodeName, Phase: pod.Status.Phase,
+		RestartPolicy: pod.Spec.RestartPolicy, OwnerReferences: pod.OwnerReferences,
 		Labels: pod.Labels, Annotations: pod.Annotations,
 		QoSClass: pod.Status.QOSClass, PriorityClassName: pod.Spec.PriorityClassName,
 		DisruptionsAllowed: -1, Containers: make(map[string]*metrics.ContainerMetrics),
+	}
+	if len(pod.Status.ContainerStatuses) > 0 && pod.Status.ContainerStatuses[0].State.Terminated != nil {
+		result.ContainerExitCode = pod.Status.ContainerStatuses[0].State.Terminated.ExitCode
 	}
 	if snapshot, err := json.Marshal(pod.Spec); err == nil {
 		result.PodSpecSnapshot = string(snapshot)

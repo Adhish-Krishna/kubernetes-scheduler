@@ -11,14 +11,22 @@ import (
 
 // APIHandler coordinates all REST endpoints for the simulator.
 type APIHandler struct {
-	runner *simulation.PipelineRunner
+	runner  *simulation.PipelineRunner
+	cluster *ClusterAPIHandler
 }
 
 // NewAPIHandler constructs a handler with the shared PipelineRunner.
 func NewAPIHandler() *APIHandler {
+	runner := simulation.NewPipelineRunner()
 	return &APIHandler{
-		runner: simulation.NewPipelineRunner(),
+		runner:  runner,
+		cluster: NewClusterAPIHandler(runner, "config/reclaim_policy.json"),
 	}
+}
+
+// Cluster returns the cluster API handler.
+func (h *APIHandler) Cluster() *ClusterAPIHandler {
+	return h.cluster
 }
 
 // EnableCORS sets headers to allow local cross-origin development if needed.

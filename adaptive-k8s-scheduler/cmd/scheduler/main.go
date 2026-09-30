@@ -75,9 +75,9 @@ func main() {
 	eventRecorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: schedCfg.SchedulerName})
 
 	// 4. Storage & Action Manager
-	store := storage.NewLocalFSStorage("/var/lib/kubelet/checkpoints")
+	store := storage.NewLocalFSStorage(action.CheckpointDirectory())
 	validator := action.NewCheckpointValidator(store, logger)
-	kubeletClient, _ := action.NewHTTPKubeletClient(clientset, k8sConfig, false, logger)
+	kubeletClient, _ := action.NewHTTPKubeletClient(clientset, k8sConfig, true, logger)
 	dynamicClient, err := dynamic.NewForConfig(k8sConfig)
 	if err != nil {
 		logger.Fatal("Failed to create dynamic Kubernetes client", zap.Error(err))

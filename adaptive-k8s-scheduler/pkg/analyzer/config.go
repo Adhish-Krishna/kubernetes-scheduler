@@ -26,7 +26,7 @@ type Config struct {
 	IdleNetBytesPerSec float64
 
 	// IdleQPSThreshold is the per-sample QPS threshold for the consistency check.
-	// Default: 0.0.
+	// Default: 0.1.
 	IdleQPSThreshold float64
 }
 
@@ -39,6 +39,6 @@ func DefaultConfig() *Config {
 		TrendFallingDelta:  0.20,
 		IdleCPUMillicores:  20.0,
 		IdleNetBytesPerSec: 10240.0,
-		IdleQPSThreshold:   0.0,
+		IdleQPSThreshold:   0.1,
 	}
 }

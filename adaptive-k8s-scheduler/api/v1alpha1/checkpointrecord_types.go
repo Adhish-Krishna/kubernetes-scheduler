@@ -12,6 +12,9 @@ const (
 	// CheckpointPhasePending indicates the checkpoint command has been initiated but tarball verification is incomplete.
 	CheckpointPhasePending CheckpointPhase = "Pending"
 
+	// CheckpointPhaseCheckpointed indicates a verified archive exists while the source pod lifecycle is unresolved.
+	CheckpointPhaseCheckpointed CheckpointPhase = "Checkpointed"
+
 	// CheckpointPhaseReady indicates the checkpoint tarball exists, SHA256 verified, and is ready for restoration.
 	CheckpointPhaseReady CheckpointPhase = "Ready"
 

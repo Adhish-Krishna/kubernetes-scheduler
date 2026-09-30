@@ -37,6 +37,12 @@ func (r *PipelineRunner) Policy() *decision.Policy {
 	return r.policy
 }
 
+// UpdatePolicy updates the active decision policy and reinitializes the decision engine.
+func (r *PipelineRunner) UpdatePolicy(p *decision.Policy) {
+	r.policy = p
+	r.engine = decision.NewEngine(p)
+}
+
 // ExecuteSingleWorkload executes the pipeline on a single synthetic workload.
 func (r *PipelineRunner) ExecuteSingleWorkload(sw models.SyntheticWorkload) models.WorkloadSimulationResult {
 	pod, window := conversion.ToPodMetricsAndWindow(sw)

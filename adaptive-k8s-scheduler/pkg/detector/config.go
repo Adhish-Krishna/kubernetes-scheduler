@@ -16,7 +16,7 @@ type Config struct {
 
 	// QPSIdleThreshold is the maximum average QPS at which the QPS signal is idle.
 	// Strictly: AvgQPS <= QPSIdleThreshold → idle.
-	QPSIdleThreshold float64 // default: 0.0
+	QPSIdleThreshold float64 // default: 0.1
 
 	// NetIdleThresholdBytes is the maximum average network bytes/sec below which
 	// the network signal is considered idle.
@@ -38,7 +38,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		CPUIdleThresholdPct:    0.30,
 		MemoryIdleThresholdPct: 0.30,
-		QPSIdleThreshold:       0.0,
+		QPSIdleThreshold:       0.1,
 		NetIdleThresholdBytes:  10240.0,
 		MinIdleDuration:        30 * time.Second,
 		MinSampleCount:         3,

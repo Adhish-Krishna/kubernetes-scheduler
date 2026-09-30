@@ -4,6 +4,7 @@
 
 import { api } from "./api.js?v=2";
 import { state } from "./state.js?v=2";
+import { ClusterController } from "./cluster.js?v=6";
 
 // ── Formatters (Presentation only) ──────────────────────────────────────────
 function formatCPU(millicores) {
@@ -84,7 +85,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 5. Setup event bindings
     bindEvents();
 
-    // 6. Initial render
+    // 6. Initialize Active Workload / Cluster controller
+    try {
+      window.clusterCtrl = new ClusterController();
+      await window.clusterCtrl.init();
+    } catch (e) {
+      console.warn("Cluster controller initialization error:", e);
+    }
+
+    // 7. Initial render
     renderDashboard(state);
   } catch (err) {
     console.error("Initialization error:", err);
@@ -167,6 +176,36 @@ async function executeSimulation() {
 
 // ── Event Bindings ─────────────────────────────────────────────────────────
 function bindEvents() {
+  // Mode Switcher: [ Scenario Simulator ] vs [ Active Workload / Cluster ]
+  const btnModeSim = document.getElementById("btn-mode-simulator");
+  const btnModeCluster = document.getElementById("btn-mode-cluster");
+  const simNav = document.querySelector(".header-center-nav");
+  const headerActions = document.querySelector(".header-actions");
+
+  function switchExecutionMode(mode) {
+    if (mode === "cluster") {
+      if (btnModeCluster) btnModeCluster.classList.add("active");
+      if (btnModeSim) btnModeSim.classList.remove("active");
+      if (simNav) simNav.style.display = "none";
+      if (headerActions) headerActions.style.display = "none";
+      document.querySelectorAll(".view-panel").forEach(p => p.classList.remove("active"));
+      const clusterPanel = document.getElementById("view-panel-cluster");
+      if (clusterPanel) clusterPanel.classList.add("active");
+      if (window.clusterCtrl) window.clusterCtrl.refresh();
+    } else {
+      if (btnModeSim) btnModeSim.classList.add("active");
+      if (btnModeCluster) btnModeCluster.classList.remove("active");
+      if (simNav) simNav.style.display = "";
+      if (headerActions) headerActions.style.display = "";
+      const clusterPanel = document.getElementById("view-panel-cluster");
+      if (clusterPanel) clusterPanel.classList.remove("active");
+      state.setActiveView(state.activeView || "overview");
+    }
+  }
+
+  if (btnModeSim) btnModeSim.addEventListener("click", () => switchExecutionMode("simulator"));
+  if (btnModeCluster) btnModeCluster.addEventListener("click", () => switchExecutionMode("cluster"));
+
   // Navigation Tabs
   document.querySelectorAll(".nav-tab-btn").forEach(btn => {
     btn.addEventListener("click", () => {

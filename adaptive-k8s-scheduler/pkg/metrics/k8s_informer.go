@@ -258,6 +258,8 @@ func (m *K8sInformerManager) syncPod(pod *corev1.Pod) {
 		UID:                     pod.UID,
 		NodeName:                pod.Spec.NodeName,
 		Phase:                   pod.Status.Phase,
+		RestartPolicy:           pod.Spec.RestartPolicy,
+		OwnerReferences:         pod.OwnerReferences,
 		Labels:                  pod.Labels,
 		Annotations:             pod.Annotations,
 		PodSpecSnapshot:         podSpecSnapshot(pod),
@@ -272,6 +274,9 @@ func (m *K8sInformerManager) syncPod(pod *corev1.Pod) {
 		TotalRequestedMemory:    totalReqMem,
 		TotalLimitMemory:        totalLimitMem,
 		LastUpdated:             time.Now(),
+	}
+	if len(pod.Status.ContainerStatuses) > 0 && pod.Status.ContainerStatuses[0].State.Terminated != nil {
+		podMetric.ContainerExitCode = pod.Status.ContainerStatuses[0].State.Terminated.ExitCode
 	}
 
 	if hasExisting {

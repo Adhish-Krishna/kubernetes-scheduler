@@ -11,6 +11,7 @@ import (
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/metrics"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/storage"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
@@ -194,6 +195,64 @@ type failingRecordWriter struct{}
 
 func (w *failingRecordWriter) Create(context.Context, *v1alpha1.CheckpointRecord) (*v1alpha1.CheckpointRecord, error) {
 	return nil, fmt.Errorf("simulated API failure")
+}
+
+type stateAwareRecordWriter struct {
+	record *v1alpha1.CheckpointRecord
+}
+
+func (w *stateAwareRecordWriter) Create(ctx context.Context, record *v1alpha1.CheckpointRecord) (*v1alpha1.CheckpointRecord, error) {
+	w.record = record
+	return record, nil
+}
+
+func (w *stateAwareRecordWriter) FindCheckpointed(ctx context.Context, namespace, podName string, podUID types.UID) (*v1alpha1.CheckpointRecord, error) {
+	if w.record == nil || w.record.Namespace != namespace || w.record.Spec.SourcePodName != podName {
+		return nil, nil
+	}
+	return w.record, nil
+}
+
+func TestExecuteActionAlreadyCheckpointedPod(t *testing.T) {
+	writer := &stateAwareRecordWriter{record: &v1alpha1.CheckpointRecord{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ckpt-analytics-worker-xyz",
+			Namespace: "ecommerce",
+		},
+		Spec: v1alpha1.CheckpointRecordSpec{
+			SourcePodName:       "analytics-worker-xyz",
+			SourcePodUID:        "uid-123",
+			CheckpointPath:      "/var/lib/rancher/k3s/agent/kubelet/checkpoints/test.tar",
+			CheckpointSizeBytes: 10240,
+		},
+		Status: v1alpha1.CheckpointRecordStatus{
+			Phase: v1alpha1.CheckpointPhaseCheckpointed,
+		},
+	}}
+
+	mgr := NewActionManager(nil, nil, nil, nil, writer, nil)
+	pod := createTestPodMetrics()
+	pod.Phase = "Succeeded"
+	pod.UID = "uid-123"
+
+	res, err := mgr.Execute(context.Background(), ActionRequest{
+		Pod: pod,
+		Decision: decision.DecisionResult{
+			Action: decision.ActionFullReclaim,
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected non-running checkpointed pod to be treated as already checkpointed: %v", err)
+	}
+	if !res.Success {
+		t.Fatal("expected success when checkpoint record already exists for non-running pod")
+	}
+	if res.CheckpointRecordName != "ckpt-analytics-worker-xyz" {
+		t.Fatalf("expected checkpoint record name to be preserved, got %q", res.CheckpointRecordName)
+	}
+	if res.Message == "" || res.CheckpointPath == "" {
+		t.Fatal("expected checkpoint metadata in action result")
+	}
 }
 
 func TestExecuteFullReclaimCheckpointFailure(t *testing.T) {

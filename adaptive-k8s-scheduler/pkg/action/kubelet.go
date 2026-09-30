@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -19,7 +20,9 @@ type KubeletClient interface {
 	Checkpoint(ctx context.Context, nodeName, namespace, pod, container string) (*CheckpointResponse, error)
 }
 
-// HTTPKubeletClient communicates with Kubelet using Kubernetes RESTClient proxy or direct HTTPS.
+// HTTPKubeletClient communicates with Kubelet using the Kubernetes node proxy or direct HTTPS.
+// The API server proxy is preferred in managed clusters such as K3s, because direct calls to the
+// kubelet on :10250 often fail with 401 unless the client is authenticated as a node identity.
 type HTTPKubeletClient struct {
 	client     kubernetes.Interface
 	restClient rest.Interface
@@ -30,7 +33,8 @@ type HTTPKubeletClient struct {
 }
 
 // NewHTTPKubeletClient initializes a Kubelet checkpoint client.
-// If restConfig is provided and useProxy=true, it routes requests through the API server node proxy.
+// When useProxy=true, it routes requests through the API server node proxy and avoids the common
+// K3s kubelet 401s seen on direct :10250 traffic.
 func NewHTTPKubeletClient(client kubernetes.Interface, restConfig *rest.Config, useProxy bool, logger *zap.Logger) (*HTTPKubeletClient, error) {
 	if logger == nil {
 		logger = zap.NewNop()
@@ -120,7 +124,11 @@ func (k *HTTPKubeletClient) Checkpoint(ctx context.Context, nodeName, namespace,
 	defer httpResp.Body.Close()
 
 	if httpResp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("kubelet returned status %d for checkpoint request", httpResp.StatusCode)
+		body, readErr := io.ReadAll(io.LimitReader(httpResp.Body, 16*1024))
+		if readErr != nil {
+			return nil, fmt.Errorf("kubelet returned status %d for checkpoint request; failed reading response body: %w", httpResp.StatusCode, readErr)
+		}
+		return nil, fmt.Errorf("kubelet returned status %d for checkpoint request: %s", httpResp.StatusCode, string(body))
 	}
 
 	var resp CheckpointResponse
