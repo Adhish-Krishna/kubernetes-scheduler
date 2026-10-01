@@ -94,6 +94,16 @@ func (d *Discoverer) DiscoverWorkloads(ctx context.Context, namespaceFilter stri
 		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
 
+	ownerPodCount := make(map[string]int32)
+	for _, p := range podList.Items {
+		if p.Status.Phase == corev1.PodRunning {
+			k, n := resolveOwner(&p)
+			if k != "Pod" {
+				ownerPodCount[fmt.Sprintf("%s/%s/%s", p.Namespace, k, n)]++
+			}
+		}
+	}
+
 	workloads := make([]models.SyntheticWorkload, 0, len(podList.Items))
 	for _, p := range podList.Items {
 		if namespaceFilter == "" && isSystemNamespace(p.Namespace) {
@@ -115,6 +125,11 @@ func (d *Discoverer) DiscoverWorkloads(ctx context.Context, namespaceFilter stri
 			priority = *p.Spec.Priority
 		}
 
+		replicas := int32(1)
+		if count, ok := ownerPodCount[fmt.Sprintf("%s/%s/%s", p.Namespace, ownerKind, ownerName)]; ok && count > 1 {
+			replicas = count
+		}
+
 		sw := models.SyntheticWorkload{
 			Name:                 p.Name,
 			Namespace:            p.Namespace,
@@ -126,9 +141,9 @@ func (d *Discoverer) DiscoverWorkloads(ctx context.Context, namespaceFilter stri
 			DisruptionsAllowed:   -1,
 			OwnerKind:            ownerKind,
 			OwnerName:            ownerName,
-			DesiredReplicas:      1,
-			ReadyReplicas:        1,
-			AvailableReplicas:    1,
+			DesiredReplicas:      replicas,
+			ReadyReplicas:        replicas,
+			AvailableReplicas:    replicas,
 			RequestedCPUMillis:   reqCPU,
 			LimitCPUMillis:       limCPU,
 			RequestedMemoryBytes: reqMem,
