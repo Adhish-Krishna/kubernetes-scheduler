@@ -11,11 +11,13 @@ import (
 // WorkloadSimulationResult packages the authoritative output from all three stages:
 // Analyzer, Detector, and Decision Engine for a single workload.
 type WorkloadSimulationResult struct {
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
-	NodeName  string `json:"nodeName"`
-	OwnerKind string `json:"ownerKind"`
-	OwnerName string `json:"ownerName"`
+	Name           string `json:"name"`
+	Namespace      string `json:"namespace"`
+	NodeName       string `json:"nodeName"`
+	Phase          string `json:"phase"`
+	Checkpointable bool   `json:"checkpointable"`
+	OwnerKind      string `json:"ownerKind"`
+	OwnerName      string `json:"ownerName"`
 
 	// Analyzer Output
 	AvgCPUMillicores         float64                    `json:"avgCpuMillicores"`
