@@ -3,11 +3,12 @@ package simulation
 import (
 	"time"
 
+	"simulator/backend/conversion"
+	"simulator/backend/models"
+
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/analyzer"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/decision"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/detector"
-	"simulator/backend/conversion"
-	"simulator/backend/models"
 )
 
 // PipelineRunner executes the real Go intelligence pipeline:
@@ -75,6 +76,8 @@ func (r *PipelineRunner) ExecuteSingleWorkload(sw models.SyntheticWorkload) mode
 		Name:                     sw.Name,
 		Namespace:                sw.Namespace,
 		NodeName:                 sw.NodeName,
+		Phase:                    sw.Phase,
+		Checkpointable:           sw.Annotations["reclaim.io/checkpointable"] == "true",
 		OwnerKind:                sw.OwnerKind,
 		OwnerName:                sw.OwnerName,
 		AvgCPUMillicores:         profile.AvgCPUMillicores,
