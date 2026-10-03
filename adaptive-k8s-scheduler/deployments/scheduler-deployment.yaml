@@ -60,6 +60,9 @@ spec:
         - name: adaptive-scheduler
           image: adaptive-scheduler:latest
           imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
           command:
             - /bin/adaptive-scheduler
           env:

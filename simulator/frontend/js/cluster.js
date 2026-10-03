@@ -187,6 +187,8 @@ export class ClusterController {
         return {
           name: sim.name || life.name,
           namespace: sim.namespace || life.namespace,
+          phase: sim.phase || "Unknown",
+          checkpointable: sim.checkpointable === true,
           nodeName: sim.nodeName || "adaptive-cluster-control-plane",
           avgCpuMillicores: sim.avgCpuMillicores || 0,
           requestedCpuMillis: sim.requestedCpuMillis || sim.requestedCPUMillis || 100,
@@ -369,14 +371,20 @@ export class ClusterController {
       const scoreFmt = (w.score !== undefined && w.score !== null) ? Number(w.score).toFixed(3) : "-";
       const isCandidate = (w.lifecycleState === "CANDIDATE" || w.action === "FULL_RECLAIM" || w.action === "SOFT_RECLAIM") && w.lifecycleState !== "RECLAIMED";
       const isReclaimed = (w.lifecycleState === "RECLAIMED" || w.lifecycleState === "CHECKPOINTED");
+      const isRunning = w.phase === "Running";
+      const canCheckpoint = w.checkpointable;
 
       let actionButtons = "";
       if (isReclaimed) {
         actionButtons = `<button class="btn btn-sm btn-restore" onclick="window.clusterCtrl.restoreWorkload('${w.namespace}', '${w.name}')">Restore</button>`;
       } else if (w.lifecycleState === "CHECKPOINTING") {
         actionButtons = `<span class="mono" style="font-size: 11px; color: var(--color-brand);">CHECKPOINTING...</span>`;
-      } else if (w.lifecycleState === "RECLAMATION_FAILED") {
+      } else if (w.lifecycleState === "RECLAMATION_FAILED" && isRunning && canCheckpoint) {
         actionButtons = `<button class="btn btn-sm btn-retry" onclick="window.clusterCtrl.checkpointWorkload('${w.namespace}', '${w.name}')">Retry Checkpoint</button>`;
+      } else if (!isRunning) {
+        actionButtons = `<span class="mono" style="font-size: 11px; color: var(--text-dim);" title="Checkpoint requires a Running pod">Unavailable: ${w.phase}</span>`;
+      } else if (!canCheckpoint) {
+        actionButtons = `<span class="mono" style="font-size: 11px; color: var(--text-dim);" title="Pod is not annotated as checkpointable">Unavailable: not checkpointable</span>`;
       } else {
         actionButtons = `<button class="btn btn-sm btn-checkpoint" onclick="window.clusterCtrl.checkpointWorkload('${w.namespace}', '${w.name}')">Checkpoint &amp; Reclaim</button>`;
       }
