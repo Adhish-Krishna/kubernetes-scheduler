@@ -14,9 +14,11 @@ import (
 
 	"github.com/finalyearproject/adaptive-k8s-scheduler/api/v1alpha1"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/action"
+	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/activator"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/analyzer"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/config"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/decision"
+	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/dependency"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/detector"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/metrics"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/scheduler"
@@ -169,6 +171,26 @@ func main() {
 	// 6. Start HTTP Server
 	server := startHTTPServer(cfg.Collector.HTTPPort, cache, adaptiveSched, restoreEngine, recordWriter, os.Getenv("RESTORE_API_TOKEN"), logger)
 
+	// 6b. Start Demand Activator & Scale-from-Zero Buffer Gateway
+	cooldownRecorder := &schedulerCooldownAdapter{
+		mu:    &reclaimCooldownMu,
+		store: reclaimCooldown,
+	}
+	readinessChecker := activator.NewK8sServiceReadinessChecker(clientset, logger)
+	activatorCfg := activator.DefaultConfig()
+	activatorServer := activator.NewActivatorServer(activatorCfg, clientset, readinessChecker, restoreEngine, recordWriter, cooldownRecorder, logger)
+
+	activatorHTTP := &http.Server{
+		Addr:    fmt.Sprintf(":%d", activatorCfg.Port),
+		Handler: activatorServer,
+	}
+	go func() {
+		logger.Info("Demand Activator & Scale-from-Zero Buffer Gateway listening", zap.Int("port", activatorCfg.Port))
+		if err := activatorHTTP.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("Activator server failed", zap.Error(err))
+		}
+	}()
+
 	// 7. Start Metrics Collector in background
 	go func() {
 		if err := collector.Start(ctx); err != nil {
@@ -250,10 +272,11 @@ func main() {
 		runScheduler(ctx)
 	}
 
-	// Graceful shutdown HTTP Server
+	// Graceful shutdown HTTP Servers
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 	server.Shutdown(shutdownCtx)
+	activatorHTTP.Shutdown(shutdownCtx)
 
 	logger.Info("Adaptive Scheduler shutdown cleanly")
 }
@@ -283,12 +306,39 @@ func restoreForPendingDemand(
 			zap.String("pendingPod", fmt.Sprintf("%s/%s", pendingPod.Namespace, pendingPod.Name)),
 			zap.String("checkpointRecord", record.Name),
 		)
+
+		// Restore unready dependencies in cascading order if declared
+		deps := dependency.ParseDependencies(pendingPod.Namespace, pendingPod.Annotations)
+		for _, dep := range deps {
+			if !hasRestoredWorkload(ctx, client, dep.Namespace, dep.Name) {
+				for _, depRec := range readyRecords {
+					if depRec.Spec.SourcePodName == dep.Name || depRec.Name == dep.Name {
+						logger.Info("Cascading restoration for dependency", zap.String("dependency", dep.String()))
+						_, _ = restoreEngine.RestorePod(ctx, depRec)
+						break
+					}
+				}
+			}
+		}
+
 		if _, err := restoreEngine.RestorePod(ctx, record); err != nil {
 			return fmt.Errorf("restore checkpoint %s/%s: %w", record.Namespace, record.Name, err)
 		}
 		return nil
 	}
 	return nil
+}
+
+type schedulerCooldownAdapter struct {
+	mu    *sync.Mutex
+	store map[string]time.Time
+}
+
+func (c *schedulerCooldownAdapter) RecordCooldown(namespace, podOrServiceName string, duration time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	key := fmt.Sprintf("%s/%s", namespace, podOrServiceName)
+	c.store[key] = time.Now().Add(duration)
 }
 
 func matchingRestoreRecord(pendingPod corev1.Pod, records []*v1alpha1.CheckpointRecord) *v1alpha1.CheckpointRecord {

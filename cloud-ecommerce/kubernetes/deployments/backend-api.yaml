@@ -20,6 +20,10 @@ metadata:
   namespace: ecommerce
   labels:
     app: backend-api
+  annotations:
+    reclaim.io/checkpointable: "true"
+    reclaim.io/depends-on: "postgres,redis"
+    reclaim.io/app: "ecommerce"
 spec:
   replicas: 1
   selector:
@@ -30,6 +34,10 @@ spec:
       labels:
         app: backend-api
         scheduler.reclaim/class: "B"
+      annotations:
+        reclaim.io/checkpointable: "true"
+        reclaim.io/depends-on: "postgres,redis"
+        reclaim.io/app: "ecommerce"
     spec:
       containers:
         - name: backend-api

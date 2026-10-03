@@ -140,7 +140,7 @@ func (c *ReclaimConfig) ToPolicy() *decision.Policy {
 	if c.Safety.MaxPriorityForReclaim > 0 {
 		p.MaxPriorityForReclaim = c.Safety.MaxPriorityForReclaim
 	}
-	if c.Safety.MinReplicasRequired > 0 {
+	if c.Safety.MinReplicasRequired >= 0 {
 		p.MinReplicasRequired = c.Safety.MinReplicasRequired
 	}
 

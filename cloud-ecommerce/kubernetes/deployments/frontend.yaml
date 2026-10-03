@@ -21,6 +21,10 @@ metadata:
   namespace: ecommerce
   labels:
     app: frontend
+  annotations:
+    reclaim.io/checkpointable: "true"
+    reclaim.io/depends-on: "backend-api"
+    reclaim.io/app: "ecommerce"
 spec:
   replicas: 1
   selector:
@@ -31,6 +35,10 @@ spec:
       labels:
         app: frontend
         scheduler.reclaim/class: "B"
+      annotations:
+        reclaim.io/checkpointable: "true"
+        reclaim.io/depends-on: "backend-api"
+        reclaim.io/app: "ecommerce"
     spec:
       containers:
         - name: frontend
