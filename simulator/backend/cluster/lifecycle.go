@@ -3,6 +3,7 @@ package cluster
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -136,3 +137,47 @@ func (lc *LifecycleCoordinator) ExecuteRestore(ctx context.Context, namespace, p
 
 	return st, nil
 }
+
+// ExecuteDependencyAwareRestore restores any hibernated dependencies first before restoring the target pod.
+func (lc *LifecycleCoordinator) ExecuteDependencyAwareRestore(ctx context.Context, namespace, podName string) ([]*WorkloadClusterState, error) {
+	lc.logger.Info("Starting dependency-aware workload restoration", zap.String("pod", fmt.Sprintf("%s/%s", namespace, podName)))
+
+	var states []*WorkloadClusterState
+
+	// 1. Inspect annotations from snapshot pod if available
+	existingState := lc.stateStore.Get(namespace, podName)
+	var annotations map[string]string
+	if existingState != nil && existingState.SnapshotPod != nil {
+		annotations = existingState.SnapshotPod.Annotations
+	}
+
+	if annotations != nil && annotations["reclaim.io/depends-on"] != "" {
+		depNames := strings.Split(annotations["reclaim.io/depends-on"], ",")
+		for _, dep := range depNames {
+			depName := strings.TrimSpace(dep)
+			if depName == "" {
+				continue
+			}
+			// Check if dependency is reclaimed or checkpointed
+			depState := lc.stateStore.Get(namespace, depName)
+			if depState != nil && (depState.State == StateReclaimed || depState.State == StateCheckpointed) {
+				lc.logger.Info("Cascading restore for dependent workload", zap.String("dependency", depName))
+				dState, dErr := lc.ExecuteRestore(ctx, namespace, depName)
+				if dErr != nil {
+					lc.logger.Warn("Failed restoring dependency", zap.String("dependency", depName), zap.Error(dErr))
+				} else if dState != nil {
+					states = append(states, dState)
+				}
+			}
+		}
+	}
+
+	// 2. Restore root workload
+	st, err := lc.ExecuteRestore(ctx, namespace, podName)
+	if err != nil {
+		return states, err
+	}
+	states = append(states, st)
+	return states, nil
+}
+

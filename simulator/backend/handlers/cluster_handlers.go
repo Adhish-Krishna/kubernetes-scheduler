@@ -310,8 +310,9 @@ func (h *ClusterAPIHandler) HandleRestore(w http.ResponseWriter, r *http.Request
 	}
 
 	var req struct {
-		Namespace string `json:"namespace"`
-		Name      string `json:"name"`
+		Namespace           string `json:"namespace"`
+		Name                string `json:"name"`
+		ResolveDependencies *bool  `json:"resolveDependencies"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"invalid JSON: %s"}`, err.Error()), http.StatusBadRequest)
@@ -330,7 +331,27 @@ func (h *ClusterAPIHandler) HandleRestore(w http.ResponseWriter, r *http.Request
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 
-	state, err := h.lifecycle.ExecuteRestore(ctx, req.Namespace, req.Name)
+	resolveDeps := true
+	if req.ResolveDependencies != nil {
+		resolveDeps = *req.ResolveDependencies
+	}
+
+	var state *cluster.WorkloadClusterState
+	var states []*cluster.WorkloadClusterState
+	var err error
+
+	if resolveDeps {
+		states, err = h.lifecycle.ExecuteDependencyAwareRestore(ctx, req.Namespace, req.Name)
+		if len(states) > 0 {
+			state = states[len(states)-1]
+		}
+	} else {
+		state, err = h.lifecycle.ExecuteRestore(ctx, req.Namespace, req.Name)
+		if state != nil {
+			states = []*cluster.WorkloadClusterState{state}
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -338,6 +359,7 @@ func (h *ClusterAPIHandler) HandleRestore(w http.ResponseWriter, r *http.Request
 			"success": false,
 			"error":   err.Error(),
 			"state":   state,
+			"states":  states,
 		})
 		return
 	}
@@ -345,5 +367,6 @@ func (h *ClusterAPIHandler) HandleRestore(w http.ResponseWriter, r *http.Request
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"state":   state,
+		"states":  states,
 	})
 }
