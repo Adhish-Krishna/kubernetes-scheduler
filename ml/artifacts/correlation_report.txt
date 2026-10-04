@@ -1,0 +1,22 @@
+================================================================================
+        CORRELATION ANALYSIS REPORT: 6 DECISION FACTORS
+             Dataset: Google Borg Production Traces
+================================================================================
+
+1. PEARSON CORRELATION MATRIX:
+
+                score_cpu  score_memory  score_benefit  score_priority  score_state  score_replica
+score_cpu        1.000000      0.552422       0.270894        0.199240     0.076896       0.006314
+score_memory     0.552422      1.000000       0.403878        0.397147     0.288853      -0.005329
+score_benefit    0.270894      0.403878       1.000000        0.035412    -0.051340       0.003196
+score_priority   0.199240      0.397147       0.035412        1.000000     0.506482      -0.004880
+score_state      0.076896      0.288853      -0.051340        0.506482     1.000000       0.001558
+score_replica    0.006314     -0.005329       0.003196       -0.004880     0.001558       1.000000
+
+--------------------------------------------------------------------------------
+2. PAIRWISE MULTICOLLINEARITY ANALYSIS:
+
+No severe collinearity detected (|r| <= 0.70 for all distinct pairs).
+All 6 factors capture sufficiently distinct operational signals.
+
+================================================================================

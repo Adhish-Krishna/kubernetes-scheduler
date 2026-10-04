@@ -1,0 +1,31 @@
+=====================================================================================
+        OBJECTIVE WEIGHT DERIVATION: ENTROPY WEIGHT METHOD (EWM)
+           Dataset: Google Borg Production Traces (1.3M containers)
+=====================================================================================
+
+1. METHODOLOGICAL FOUNDATION:
+   - Origin: Claude Shannon's Information Entropy (1948) & TOPSIS Decision Science.
+   - Principle: Features with higher information dispersion across cluster workloads
+     carry greater discriminative contrast and naturally receive higher weights.
+   - Eliminates subjective human bias and circular synthetic target formulas.
+
+-------------------------------------------------------------------------------------
+2. STEP-BY-STEP CALCULATION RESULTS:
+
+Factor Name            | Entropy (e_j)   | Diversity (d_j)  | Final Weight | Share (%)
+-------------------------------------------------------------------------------------
+score_cpu              |      0.97854005 |       0.02145995 |     0.199702 |  19.97%
+score_memory           |      0.97573117 |       0.02426883 |     0.225841 |  22.58%
+score_benefit          |      0.95600896 |       0.04399104 |     0.409373 |  40.94%
+score_priority         |      0.99312788 |       0.00687212 |     0.063951 |   6.40%
+score_state            |      0.98942137 |       0.01057863 |     0.098443 |   9.84%
+score_replica          |      0.99971095 |       0.00028905 |     0.002690 |   0.27%
+-------------------------------------------------------------------------------------
+SUM                    | -               |       0.10745963 |     1.000000 | 100.00%
+=====================================================================================
+
+3. INTERPRETATION & DEFENSE FOR FACULTY:
+   • Factors with lower entropy (e_j) exhibit higher variation and contrast across workloads.
+   • Information utility (d_j = 1 - e_j) measures how useful the criterion is to rank candidates.
+   • The final weights (W_j) sum strictly to 1.000000 and are 100% data-driven.
+=====================================================================================

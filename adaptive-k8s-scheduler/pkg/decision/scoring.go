@@ -189,13 +189,10 @@ func ScoreCheckpoint(annotations map[string]string, annotationKey string) float6
 func ComputeScore(factors IndividualScores, policy *Policy) float64 {
 	return policy.WeightCPU*factors.CPU +
 		policy.WeightMemory*factors.Memory +
-		policy.WeightIdle*factors.Idle +
 		policy.WeightBenefit*factors.Benefit +
-		policy.WeightReplica*factors.Replica +
 		policy.WeightPriority*factors.Priority +
-		policy.WeightPDB*factors.PDB +
 		policy.WeightState*factors.State +
-		policy.WeightCheckpoint*factors.Checkpoint
+		policy.WeightReplica*factors.Replica
 }
 
 // clamp constrains a float64 to [min, max].

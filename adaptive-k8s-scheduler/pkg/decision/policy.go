@@ -64,19 +64,19 @@ type Policy struct {
 // DefaultPolicy returns the standard policy matching the project implementation plan.
 func DefaultPolicy() *Policy {
 	return &Policy{
-		FullReclaimScoreThreshold: 0.75,
-		SoftReclaimScoreThreshold: 0.50,
+		FullReclaimScoreThreshold: 0.5927,
+		SoftReclaimScoreThreshold: 0.3361,
 
-		// Data-backed weights derived via Bounded NNLS + XGBoost on Google Borg traces:
-		WeightCPU:        0.183617150,
-		WeightMemory:     0.259222924,
-		WeightBenefit:    0.251511995,
-		WeightIdle:       0.071811839,
-		WeightReplica:    0.005768108,
-		WeightPriority:   0.056780330,
-		WeightState:      0.117221444,
-		WeightPDB:        0.043597250,
-		WeightCheckpoint: 0.010468960,
+		// Data-backed weights derived via Shannon's Entropy Weight Method (EWM) on Google Borg traces:
+		WeightCPU:        0.199702,
+		WeightMemory:     0.225841,
+		WeightBenefit:    0.409373,
+		WeightPriority:   0.063951,
+		WeightState:      0.098443,
+		WeightReplica:    0.002690,
+		WeightIdle:       0.0,
+		WeightPDB:        0.0,
+		WeightCheckpoint: 0.0,
 
 		MaxPriorityForReclaim: 100000,
 		MinReplicasRequired:   1,

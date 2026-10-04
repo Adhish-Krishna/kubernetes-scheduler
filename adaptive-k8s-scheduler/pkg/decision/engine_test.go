@@ -249,32 +249,30 @@ func TestEngine_LowScore_Keep(t *testing.T) {
 	}
 }
 
-func TestEngine_ScoreExactly075_FullAllowed_SelectsFullReclaim(t *testing.T) {
+func TestEngine_ScoreExactlyFullThreshold_FullAllowed_SelectsFullReclaim(t *testing.T) {
 	policy := DefaultPolicy()
-	// Build a policy and inputs that produce exactly 0.75.
-	// We test selectAction directly for exact boundary control.
 	caps := Capabilities{FullReclaimAllowed: true, SoftReclaimAllowed: true}
-	action, _ := selectAction(0.75, caps, policy)
+	action, _ := selectAction(policy.FullReclaimScoreThreshold, caps, policy)
 	if action != ActionFullReclaim {
-		t.Errorf("score=0.75 + full allowed: expected FULL_RECLAIM, got %s", action)
+		t.Errorf("score=FullThreshold + full allowed: expected FULL_RECLAIM, got %s", action)
 	}
 }
 
-func TestEngine_ScoreExactly050_SoftAllowed_SelectsSoftReclaim(t *testing.T) {
+func TestEngine_ScoreExactlySoftThreshold_SoftAllowed_SelectsSoftReclaim(t *testing.T) {
 	policy := DefaultPolicy()
 	caps := Capabilities{FullReclaimAllowed: false, SoftReclaimAllowed: true}
-	action, _ := selectAction(0.50, caps, policy)
+	action, _ := selectAction(policy.SoftReclaimScoreThreshold, caps, policy)
 	if action != ActionSoftReclaim {
-		t.Errorf("score=0.50 + soft allowed: expected SOFT_RECLAIM, got %s", action)
+		t.Errorf("score=SoftThreshold + soft allowed: expected SOFT_RECLAIM, got %s", action)
 	}
 }
 
-func TestEngine_ScoreBelow050_Keep(t *testing.T) {
+func TestEngine_ScoreBelowSoftThreshold_Keep(t *testing.T) {
 	policy := DefaultPolicy()
 	caps := Capabilities{FullReclaimAllowed: true, SoftReclaimAllowed: true}
-	action, _ := selectAction(0.499, caps, policy)
+	action, _ := selectAction(policy.SoftReclaimScoreThreshold-0.01, caps, policy)
 	if action != ActionKeep {
-		t.Errorf("score=0.499: expected KEEP, got %s", action)
+		t.Errorf("score below soft threshold: expected KEEP, got %s", action)
 	}
 }
 
@@ -488,8 +486,8 @@ func TestComputeScore_Range(t *testing.T) {
 
 func TestComputeScore_WeightsSumTo1(t *testing.T) {
 	p := DefaultPolicy()
-	sum := p.WeightCPU + p.WeightMemory + p.WeightIdle + p.WeightBenefit +
-		p.WeightReplica + p.WeightPriority + p.WeightPDB + p.WeightState + p.WeightCheckpoint
+	sum := p.WeightCPU + p.WeightMemory + p.WeightBenefit +
+		p.WeightPriority + p.WeightState + p.WeightReplica
 	if sum < 0.9999 || sum > 1.0001 {
 		t.Errorf("DefaultPolicy weights must sum to 1.0, got %.6f", sum)
 	}
