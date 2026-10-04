@@ -132,6 +132,19 @@ func (w *DynamicCheckpointRecordWriter) UpdateStatus(ctx context.Context, record
 	return w.updateStatus(ctx, record)
 }
 
+// Delete removes a CheckpointRecord by namespace and name.
+// Used by GracefulReclaimer to clean up a dangling Ready record when UpdateScale fails.
+func (w *DynamicCheckpointRecordWriter) Delete(ctx context.Context, namespace, name string) error {
+	if w == nil || w.client == nil {
+		return fmt.Errorf("checkpoint record dynamic client is not configured")
+	}
+	err := w.client.Resource(checkpointRecordResource).Namespace(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	if err != nil {
+		return fmt.Errorf("delete checkpoint record %s/%s: %w", namespace, name, err)
+	}
+	return nil
+}
+
 func (w *DynamicCheckpointRecordWriter) updateStatus(ctx context.Context, record *v1alpha1.CheckpointRecord) (*v1alpha1.CheckpointRecord, error) {
 	content, err := runtime.DefaultUnstructuredConverter.ToUnstructured(record)
 	if err != nil {

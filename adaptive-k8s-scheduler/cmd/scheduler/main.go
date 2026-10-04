@@ -88,6 +88,7 @@ func main() {
 	softReclaimer := action.NewSoftReclaimer(clientset, logger)
 	recordWriter := action.NewDynamicCheckpointRecordWriter(dynamicClient)
 	actionMgr := action.NewActionManager(kubeletClient, validator, evictor, softReclaimer, recordWriter, logger)
+	actionMgr.SetGracefulReclaimer(action.NewGracefulReclaimer(clientset, recordWriter, logger))
 	restoreEngine := action.NewRestoreEngine(clientset, logger)
 	restoreEngine.SetStatusWriter(recordWriter)
 
@@ -193,6 +194,12 @@ func main() {
 			logger.Error("Activator server failed", zap.Error(err))
 		}
 	}()
+
+	// 6c. Start Restore Watchdog: detects CRIU-restored bare pods that are stuck
+	// Pending/Unschedulable (insufficient node resources) and rolls their
+	// CheckpointRecord back to Ready so the restore can be retried later.
+	restoreWatchdog := action.NewRestoreWatchdog(clientset, recordWriter, logger, 30*time.Second)
+	go restoreWatchdog.Run(ctx)
 
 	// 7. Start Metrics Collector in background
 	go func() {

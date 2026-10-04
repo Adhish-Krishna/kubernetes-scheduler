@@ -17,6 +17,7 @@ import (
 // CheckpointRecordWriter abstracts committing CheckpointRecord CRDs to Kubernetes.
 type CheckpointRecordWriter interface {
 	Create(ctx context.Context, record *v1alpha1.CheckpointRecord) (*v1alpha1.CheckpointRecord, error)
+	Delete(ctx context.Context, namespace, name string) error
 }
 
 type CheckpointStateStore interface {
@@ -30,7 +31,13 @@ type ActionManager struct {
 	evictor       PodEvictor
 	softReclaimer *SoftReclaimer
 	recordWriter  CheckpointRecordWriter
+	graceful      *GracefulReclaimer
 	logger        *zap.Logger
+}
+
+// SetGracefulReclaimer configures the fallback used by annotated network services.
+func (m *ActionManager) SetGracefulReclaimer(reclaimer *GracefulReclaimer) {
+	m.graceful = reclaimer
 }
 
 // NewActionManager creates a fully configured ActionManager instance.
@@ -146,6 +153,10 @@ func (m *ActionManager) executeFullReclaim(ctx context.Context, req ActionReques
 	// Step 1: Trigger Kubelet checkpoint
 	resp, err := m.kubeletClient.Checkpoint(ctx, pod.NodeName, pod.Namespace, pod.Name, containerName)
 	if err != nil {
+		if pod.Annotations["reclaim.io/graceful-redeploy"] == "true" && m.graceful != nil {
+			m.logger.Warn("CRIU checkpoint failed; falling back to graceful network-service redeploy", zap.String("pod", pod.Name), zap.Error(err))
+			return m.graceful.Reclaim(ctx, pod)
+		}
 		m.logger.Error("Full reclaim aborted: Kubelet checkpoint API failed; pod will NOT be evicted",
 			zap.String("pod", pod.Name),
 			zap.Error(err),

@@ -22,6 +22,7 @@ metadata:
     app: backend-api
   annotations:
     reclaim.io/checkpointable: "true"
+    reclaim.io/graceful-redeploy: "true"
     reclaim.io/depends-on: "postgres,redis"
     reclaim.io/app: "ecommerce"
 spec:
@@ -36,9 +37,11 @@ spec:
         scheduler.reclaim/class: "B"
       annotations:
         reclaim.io/checkpointable: "true"
+        reclaim.io/graceful-redeploy: "true"
         reclaim.io/depends-on: "postgres,redis"
         reclaim.io/app: "ecommerce"
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
         - name: backend-api
           image: backend-api:latest
@@ -86,3 +89,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "kill -TERM 1; sleep 5"]
