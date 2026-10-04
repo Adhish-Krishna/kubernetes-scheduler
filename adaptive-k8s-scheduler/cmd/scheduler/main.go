@@ -112,21 +112,24 @@ func main() {
 			)
 			decisionPolicy = decision.DefaultPolicy()
 		} else {
-			logger.Info("Successfully loaded data-backed weights from file",
+			logger.Info("Successfully loaded data-backed weights and thresholds from file",
 				zap.String("weightsFile", weightsPath),
-				zap.Float64("WeightCPU", loadedPolicy.WeightCPU),
-				zap.Float64("WeightMemory", loadedPolicy.WeightMemory),
 				zap.Float64("WeightBenefit", loadedPolicy.WeightBenefit),
-				zap.Float64("WeightIdle", loadedPolicy.WeightIdle),
+				zap.Float64("WeightMemory", loadedPolicy.WeightMemory),
+				zap.Float64("WeightCPU", loadedPolicy.WeightCPU),
+				zap.Float64("SoftThreshold", loadedPolicy.SoftReclaimScoreThreshold),
+				zap.Float64("FullThreshold", loadedPolicy.FullReclaimScoreThreshold),
 			)
 			decisionPolicy = loadedPolicy
 		}
 	} else {
 		decisionPolicy = decision.DefaultPolicy()
-		logger.Info("Using compiled DefaultPolicy weights",
-			zap.Float64("WeightCPU", decisionPolicy.WeightCPU),
-			zap.Float64("WeightMemory", decisionPolicy.WeightMemory),
+		logger.Info("Using compiled DefaultPolicy weights and thresholds",
 			zap.Float64("WeightBenefit", decisionPolicy.WeightBenefit),
+			zap.Float64("WeightMemory", decisionPolicy.WeightMemory),
+			zap.Float64("WeightCPU", decisionPolicy.WeightCPU),
+			zap.Float64("SoftThreshold", decisionPolicy.SoftReclaimScoreThreshold),
+			zap.Float64("FullThreshold", decisionPolicy.FullReclaimScoreThreshold),
 		)
 	}
 

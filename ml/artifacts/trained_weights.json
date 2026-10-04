@@ -1,75 +1,83 @@
 {
   "metadata": {
-    "generated_at": "2026-09-29T02:18:13.828422+00:00",
+    "generated_at": "2026-10-04T07:12:11.753795+00:00",
     "dataset": "Google Borg 2019 Traces (derrickmwiti/google-2019-cluster-sample)",
     "sample_size": 405120,
-    "model_type": "Ensemble Bounded Ridge NNLS + XGBoost Feature Importance",
-    "target_formulation": "Multi-Criteria Net Reclaim Utility (Formulation B)",
-    "precision_decimals": 9,
-    "metrics": {
-      "ridge_linear": {
-        "r2_score": 0.488,
-        "mae": 0.0983,
-        "rmse": 0.1383,
-        "safe_classification_auc": 0.5487
-      },
-      "xgboost_baseline": {
-        "r2_score": 0.8493,
-        "mae": 0.0422,
-        "rmse": 0.075
-      },
-      "comparison": {
-        "relative_linear_retention_percent": 57.46,
-        "latency_go_vs_python_ratio": "> 1000x faster"
-      }
-    }
+    "weight_derivation_method": "Shannon's Entropy Weight Method (EWM)",
+    "threshold_derivation_method": "Unsupervised K-Means Clustering (K=3)",
+    "factors_count": 6
   },
   "weights": {
-    "WeightCPU": 0.18361715,
-    "WeightMemory": 0.259222924,
-    "WeightBenefit": 0.251511995,
-    "WeightIdle": 0.071811839,
-    "WeightReplica": 0.005768108,
-    "WeightPriority": 0.05678033,
-    "WeightState": 0.117221444,
-    "WeightPDB": 0.04359725,
-    "WeightCheckpoint": 0.01046896
+    "WeightCPU": 0.199702,
+    "WeightMemory": 0.225841,
+    "WeightBenefit": 0.409373,
+    "WeightPriority": 0.063951,
+    "WeightState": 0.098443,
+    "WeightReplica": 0.00269
   },
-  "linear_weights": {
-    "WeightCPU": 0.215780208,
-    "WeightMemory": 0.298210924,
-    "WeightBenefit": 0.336766131,
-    "WeightIdle": 0.009713887,
-    "WeightReplica": 0.009713887,
-    "WeightPriority": 0.009713887,
-    "WeightState": 0.100673302,
-    "WeightPDB": 0.009713887,
-    "WeightCheckpoint": 0.009713887
+  "thresholds": {
+    "SoftReclaimScoreThreshold": 0.3361,
+    "FullReclaimScoreThreshold": 0.5927
   },
-  "xgboost_weights": {
-    "WeightCPU": 0.151454091,
-    "WeightMemory": 0.220234923,
-    "WeightBenefit": 0.166257858,
-    "WeightIdle": 0.133909792,
-    "WeightReplica": 0.001822329,
-    "WeightPriority": 0.103846774,
-    "WeightState": 0.133769587,
-    "WeightPDB": 0.077480614,
-    "WeightCheckpoint": 0.011224032
+  "cluster_distribution": {
+    "KEEP": {
+      "count": 138476,
+      "percentage": 34.18
+    },
+    "SOFT_RECLAIM": {
+      "count": 168174,
+      "percentage": 41.51
+    },
+    "FULL_RECLAIM": {
+      "count": 98470,
+      "percentage": 24.31
+    }
   },
-  "raw_coefficients": {
-    "WeightCPU": 0.111067905,
-    "WeightMemory": 0.153497222,
-    "WeightBenefit": 0.17334263,
-    "WeightIdle": 0.005,
-    "WeightReplica": 0.005,
-    "WeightPriority": 0.005,
-    "WeightState": 0.051819269,
-    "WeightPDB": 0.005,
-    "WeightCheckpoint": 0.005
+  "cluster_centroids": {
+    "C0_Keep": 0.19741374502003237,
+    "C1_Soft": 0.47481272502423433,
+    "C2_Full": 0.7105427224206993
+  },
+  "entropy_metrics": {
+    "WeightCPU": {
+      "entropy": 0.978540049576228,
+      "diversity_utility": 0.021459950423772023,
+      "weight": 0.199702,
+      "percentage": "19.97%"
+    },
+    "WeightMemory": {
+      "entropy": 0.9757311682858801,
+      "diversity_utility": 0.024268831714119865,
+      "weight": 0.225841,
+      "percentage": "22.58%"
+    },
+    "WeightBenefit": {
+      "entropy": 0.95600896049086,
+      "diversity_utility": 0.04399103950913996,
+      "weight": 0.409373,
+      "percentage": "40.94%"
+    },
+    "WeightPriority": {
+      "entropy": 0.9931278770379746,
+      "diversity_utility": 0.00687212296202544,
+      "weight": 0.063951,
+      "percentage": "6.40%"
+    },
+    "WeightState": {
+      "entropy": 0.9894213654797425,
+      "diversity_utility": 0.010578634520257535,
+      "weight": 0.098443,
+      "percentage": "9.84%"
+    },
+    "WeightReplica": {
+      "entropy": 0.9997109520285623,
+      "diversity_utility": 0.0002890479714376948,
+      "weight": 0.00269,
+      "percentage": "0.27%"
+    }
   },
   "validation": {
     "sum": 1.0,
-    "factors_count": 9
+    "is_valid": true
   }
 }

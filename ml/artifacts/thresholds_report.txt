@@ -1,0 +1,38 @@
+=====================================================================================
+       DATA-DRIVEN DECISION THRESHOLDS: K-MEANS CLUSTERING (K=3)
+            Dataset: Google Borg Production Traces (1.3M containers)
+=====================================================================================
+
+1. METHODOLOGICAL FOUNDATION:
+   - Problem: Hardcoded thresholds (like 0.50 and 0.75) are arbitrary assumptions.
+   - Solution: 1D Unsupervised K-Means clustering (K=3) groups workloads into 3 natural
+     density tiers based on their objective reclamation composite scores.
+   - Decision boundaries are calculated as exact midpoints between adjacent centroids:
+       SoftReclaimThreshold = (C0 + C1) / 2
+       FullReclaimThreshold = (C1 + C2) / 2
+
+-------------------------------------------------------------------------------------
+2. K-MEANS CLUSTERING RESULTS:
+
+   • Cluster 0 Centroid (Low Suitability / KEEP)        : 0.197414
+   • Cluster 1 Centroid (Moderate Suitability / SOFT)   : 0.474813
+   • Cluster 2 Centroid (High Suitability / FULL)       : 0.710543
+
+   DERIVED DECISION THRESHOLDS:
+   --------------------------------------------------------
+   • SoftReclaimScoreThreshold : 0.3361  (Score >= 0.3361 triggers SOFT_RECLAIM)
+   • FullReclaimScoreThreshold : 0.5927  (Score >= 0.5927 triggers FULL_RECLAIM)
+   --------------------------------------------------------
+
+-------------------------------------------------------------------------------------
+3. EMPIRICAL WORKLOAD POPULATION DISTRIBUTION:
+
+   Action Tier      | Score Range          | Workload Count   | Percentage
+   ---------------- | -------------------- | ---------------- | ----------
+   KEEP             | [0.0000, 0.3361)     |          138,476 |     34.18%
+   SOFT_RECLAIM     | [0.3361, 0.5927)     |          168,174 |     41.51%
+   FULL_RECLAIM     | [0.5927, 1.0000]     |           98,470 |     24.31%
+   ---------------- | -------------------- | ---------------- | ----------
+   TOTAL            | [0.0000, 1.0000]     |          405,120 | 100.00%
+
+=====================================================================================
