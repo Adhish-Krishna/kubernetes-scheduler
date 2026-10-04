@@ -68,6 +68,12 @@ spec:
                 nodeName:
                   type: string
                   description: Node where the source container was running.
+                ownerKind:
+                  type: string
+                  description: Owning controller kind for graceful redeployment.
+                ownerName:
+                  type: string
+                  description: Owning controller name for graceful redeployment.
                 containerName:
                   type: string
                   description: Specific container checkpointed.
@@ -101,6 +107,11 @@ spec:
                 podSpecSnapshot:
                   type: string
                   description: Serialized JSON copy of original pod specification.
+                podLabelsSnapshot:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: Original pod labels required for Service selector matching after redeployment.
             status:
               type: object
               properties:

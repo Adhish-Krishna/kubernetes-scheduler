@@ -3,6 +3,7 @@ package action
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/decision"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/metrics"
 	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/storage"
+	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
@@ -76,6 +78,10 @@ type mockRecordWriter struct {
 func (m *mockRecordWriter) Create(ctx context.Context, record *v1alpha1.CheckpointRecord) (*v1alpha1.CheckpointRecord, error) {
 	m.savedRecord = record
 	return record, nil
+}
+
+func (m *mockRecordWriter) Delete(ctx context.Context, namespace, name string) error {
+	return nil
 }
 
 func createTestPodMetrics() *metrics.PodMetrics {
@@ -197,6 +203,10 @@ func (w *failingRecordWriter) Create(context.Context, *v1alpha1.CheckpointRecord
 	return nil, fmt.Errorf("simulated API failure")
 }
 
+func (w *failingRecordWriter) Delete(context.Context, string, string) error {
+	return nil
+}
+
 type stateAwareRecordWriter struct {
 	record *v1alpha1.CheckpointRecord
 }
@@ -204,6 +214,10 @@ type stateAwareRecordWriter struct {
 func (w *stateAwareRecordWriter) Create(ctx context.Context, record *v1alpha1.CheckpointRecord) (*v1alpha1.CheckpointRecord, error) {
 	w.record = record
 	return record, nil
+}
+
+func (w *stateAwareRecordWriter) Delete(ctx context.Context, namespace, name string) error {
+	return nil
 }
 
 func (w *stateAwareRecordWriter) FindCheckpointed(ctx context.Context, namespace, podName string, podUID types.UID) (*v1alpha1.CheckpointRecord, error) {
@@ -381,3 +395,58 @@ func TestRestoreEngineSpecReconstitution(t *testing.T) {
 		t.Errorf("Missing checkpoint sha annotation on restored pod")
 	}
 }
+
+func TestGracefulReclaimer_RecordNameLengthAndReplicaValidation(t *testing.T) {
+	pod := createTestPodMetrics()
+	pod.Name = "a-very-long-pod-name-that-would-exceed-the-limit-if-not-properly-truncated"
+	pod.Replicas = &metrics.ReplicaInfo{
+		OwnerKind: "Deployment",
+		OwnerName: "test-deployment",
+	}
+
+	deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-deployment",
+			Namespace: "ecommerce",
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: func() *int32 { r := int32(2); return &r }(),
+		},
+	}
+
+	fakeClient := fake.NewSimpleClientset(deployment)
+	mockWriter := &mockRecordWriter{}
+	reclaimer := NewGracefulReclaimer(fakeClient, mockWriter, nil)
+
+	// Should fail because replicas == 2 (> 1)
+	res, err := reclaimer.Reclaim(context.Background(), pod)
+	if err == nil {
+		t.Fatalf("expected error when replicas > 1, got result: %v", res)
+	}
+
+	// Verify recordName was generated correctly (<= 63 chars and starts with graceful-)
+	if mockWriter.savedRecord == nil {
+		t.Fatalf("expected record to have been created before validation")
+	}
+	if len(mockWriter.savedRecord.Name) > 63 {
+		t.Errorf("record name exceeds 63 characters: %d (%s)", len(mockWriter.savedRecord.Name), mockWriter.savedRecord.Name)
+	}
+	if !strings.HasPrefix(mockWriter.savedRecord.Name, "graceful-") {
+		t.Errorf("record name missing graceful- prefix: %s", mockWriter.savedRecord.Name)
+	}
+
+	// Now set replicas to 1 and verify success
+	*deployment.Spec.Replicas = 1
+	fakeClient = fake.NewSimpleClientset(deployment)
+	mockWriter = &mockRecordWriter{}
+	reclaimer = NewGracefulReclaimer(fakeClient, mockWriter, nil)
+
+	res, err = reclaimer.Reclaim(context.Background(), pod)
+	if err != nil {
+		t.Fatalf("expected success with 1 replica, got error: %v", err)
+	}
+	if !res.Success {
+		t.Errorf("expected Success=true in result")
+	}
+}
+

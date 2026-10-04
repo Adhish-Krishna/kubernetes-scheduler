@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/finalyearproject/adaptive-k8s-scheduler/api/v1alpha1"
 	"go.uber.org/zap"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -69,6 +71,14 @@ func (r *RestoreEngine) BuildRestoredPodSpec(record *v1alpha1.CheckpointRecord) 
 	}
 	podSpec.NodeName = ""
 
+	labels := map[string]string{
+		"app.kubernetes.io/restored-from": record.Name,
+		"reclaim.io/source-pod":           record.Spec.SourcePodName,
+	}
+	for key, value := range record.Spec.PodLabelsSnapshot {
+		labels[key] = value
+	}
+
 	restoredPodName := fmt.Sprintf("%s-restored-%d", record.Spec.SourcePodName, time.Now().Unix())
 	if len(restoredPodName) > 63 {
 		restoredPodName = restoredPodName[:63]
@@ -78,14 +88,14 @@ func (r *RestoreEngine) BuildRestoredPodSpec(record *v1alpha1.CheckpointRecord) 
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      restoredPodName,
 			Namespace: record.Namespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/restored-from": record.Name,
-				"reclaim.io/source-pod":           record.Spec.SourcePodName,
-			},
+			Labels:    labels,
 			Annotations: map[string]string{
 				"reclaim.io/checkpoint-path":   record.Spec.CheckpointPath,
 				"reclaim.io/checkpoint-sha256": record.Spec.ChecksumSHA256,
 				"reclaim.io/restored-at":       time.Now().Format(time.RFC3339),
+				// watchdogAnnotation links this pod back to its CheckpointRecord so that
+				// RestoreWatchdog can roll back the record if the pod gets stuck Unschedulable.
+				watchdogAnnotation: record.Name,
 			},
 		},
 		Spec: podSpec,
@@ -111,6 +121,29 @@ func (r *RestoreEngine) RestorePod(ctx context.Context, record *v1alpha1.Checkpo
 			return nil, err
 		}
 		record.ResourceVersion = updated.ResourceVersion
+	}
+
+	if strings.HasPrefix(record.Spec.CheckpointPath, "graceful://") && record.Spec.OwnerKind == "Deployment" && record.Spec.OwnerName != "" {
+		replicas := int32(1)
+		if _, err := r.client.AppsV1().Deployments(record.Namespace).UpdateScale(ctx, record.Spec.OwnerName, &autoscalingv1.Scale{ObjectMeta: metav1.ObjectMeta{Name: record.Spec.OwnerName, Namespace: record.Namespace}, Spec: autoscalingv1.ScaleSpec{Replicas: replicas}}, metav1.UpdateOptions{}); err != nil {
+			if statusErr := r.markFailed(ctx, record, err); statusErr != nil {
+				return nil, fmt.Errorf("scale graceful Deployment: %w; failed to persist Failed status: %v", err, statusErr)
+			}
+			return nil, fmt.Errorf("scale graceful Deployment: %w", err)
+		}
+		now := metav1.Now()
+		record.Status.Phase = v1alpha1.CheckpointPhaseRestored
+		record.Status.RestoredPodName = record.Spec.OwnerName
+		record.Status.RestoredAt = &now
+		record.Status.Message = fmt.Sprintf("Graceful redeployment requested for Deployment %s", record.Spec.OwnerName)
+		if r.statusWriter != nil {
+			updated, err := r.statusWriter.UpdateStatus(ctx, record)
+			if err != nil {
+				return nil, err
+			}
+			record.ResourceVersion = updated.ResourceVersion
+		}
+		return &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: record.Spec.OwnerName, Namespace: record.Namespace}}, nil
 	}
 
 	restoredPod, err := r.BuildRestoredPodSpec(record)

@@ -23,16 +23,26 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD || 'postgres-secure-password',
   database: process.env.DB_NAME || 'ecommerce',
   max: 10,
-  idleTimeoutMillis: 30000,
+  idleTimeoutMillis: 1000,
   connectionTimeoutMillis: 2000,
 });
 
-// Redis Client
-const redisClient = createClient({ url: REDIS_URL });
-redisClient.on('error', (err) => logger.error(`Redis Error: ${err.message}`));
-
 let dbReady = false;
 let redisReady = false;
+
+async function withRedis(operation) {
+  const client = createClient({
+    url: REDIS_URL,
+    socket: { reconnectStrategy: false },
+  });
+  client.on('error', (err) => logger.error(`Redis Error: ${err.message}`));
+  await client.connect();
+  try {
+    return await operation(client);
+  } finally {
+    await client.quit().catch(() => client.disconnect());
+  }
+}
 
 // Retry connecting to Postgres
 const initDbConnection = async (retries = 10, delay = 3000) => {
@@ -55,7 +65,7 @@ const initDbConnection = async (retries = 10, delay = 3000) => {
 const initRedisConnection = async (retries = 10, delay = 3000) => {
   while (retries > 0) {
     try {
-      await redisClient.connect();
+      await withRedis((client) => client.ping());
       logger.info('Connected to Redis successfully.');
       redisReady = true;
       break;
@@ -160,18 +170,18 @@ app.post('/api/users/login', async (req, res) => {
 // ==========================================
 app.get('/api/products', async (req, res) => {
   try {
-    if (redisReady) {
-      const cached = await redisClient.get('products_list');
-      if (cached) {
-        return res.json(JSON.parse(cached));
-      }
+    try {
+      const cached = await withRedis((client) => client.get('products_list'));
+      if (cached) return res.json(JSON.parse(cached));
+    } catch (err) {
+      logger.warn(`Product cache unavailable: ${err.message}`);
     }
 
     const result = await pool.query('SELECT id, name, price, category, description FROM products ORDER BY id ASC');
     const products = result.rows;
 
-    if (redisReady && products.length > 0) {
-      await redisClient.set('products_list', JSON.stringify(products), { EX: 60 });
+    if (products.length > 0) {
+      await withRedis((client) => client.set('products_list', JSON.stringify(products), { EX: 60 }));
     }
 
     res.json(products);
@@ -253,7 +263,7 @@ app.post('/api/orders', authenticateToken, async (req, res) => {
         itemsCount: items.length,
         timestamp: new Date().toISOString()
       });
-      redisClient.publish('orders_stream', orderEvent).catch((err) => {
+      withRedis((client) => client.publish('orders_stream', orderEvent)).catch((err) => {
         logger.warn(`Failed to publish order event to Redis: ${err.message}`);
       });
     }
@@ -304,7 +314,7 @@ app.post('/api/notifications', async (req, res) => {
     });
 
     // Enqueue task to Redis List for Worker service
-    await redisClient.lPush('notifications_queue', task);
+    await withRedis((client) => client.lPush('notifications_queue', task));
     logger.info(`Enqueued task "${type}" for ${email}`);
     res.json({ status: 'Queued', queue: 'notifications_queue' });
   } catch (err) {
@@ -313,6 +323,6 @@ app.post('/api/notifications', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   logger.info(`Backend API server running on port ${PORT}`);
 });

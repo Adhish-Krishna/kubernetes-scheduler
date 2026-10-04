@@ -42,6 +42,10 @@ type CheckpointRecordSpec struct {
 	// NodeName is the Kubernetes node where the source container was running during checkpoint capture.
 	NodeName string `json:"nodeName"`
 
+	// OwnerKind and OwnerName identify a controller used for graceful redeployment.
+	OwnerKind string `json:"ownerKind,omitempty"`
+	OwnerName string `json:"ownerName,omitempty"`
+
 	// ContainerName is the specific container within the pod that was checkpointed.
 	ContainerName string `json:"containerName"`
 
@@ -68,6 +72,9 @@ type CheckpointRecordSpec struct {
 
 	// PodSpecSnapshot is a serialized JSON copy of the original pod specification for exact reconstitution.
 	PodSpecSnapshot string `json:"podSpecSnapshot,omitempty"`
+
+	// PodLabelsSnapshot preserves Service selector labels for graceful service redeployment.
+	PodLabelsSnapshot map[string]string `json:"podLabelsSnapshot,omitempty"`
 }
 
 // CheckpointRecordStatus defines the lifecycle status and restoration record of a checkpoint.
