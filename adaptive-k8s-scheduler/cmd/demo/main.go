@@ -31,10 +31,28 @@ func main() {
 	kubeconfig := flag.String("kubeconfig", os.Getenv("KUBECONFIG"), "Kubeconfig path; defaults to in-cluster or ~/.kube/config")
 	samples := flag.Int("samples", 5, "Number of live Prometheus samples to collect")
 	interval := flag.Duration("interval", 10*time.Second, "Delay between live samples")
+	timeWindow := flag.Duration("timewindow", 0, "Time window duration to watch the pod (e.g. 30s, 60s, 2m); automatically calculates sample count")
+	watchWindow := flag.Duration("watch-window", 0, "Alias for --timewindow")
 	idleQPSThreshold := flag.Float64("idle-qps-threshold", 0.1, "Maximum QPS treated as idle; accommodates Prometheus rate noise")
 	containerName := flag.String("container", "", "Container to reclaim; required for multi-container pods")
 	execute := flag.Bool("execute", false, "Execute the selected reclaim action after an IDLE classification")
 	flag.Parse()
+
+	chosenWindow := *timeWindow
+	if *watchWindow > 0 {
+		chosenWindow = *watchWindow
+	}
+	if chosenWindow > 0 {
+		if *interval <= 0 {
+			*interval = 5 * time.Second
+		}
+		computed := int(chosenWindow / *interval)
+		if computed < 1 {
+			computed = 1
+		}
+		*samples = computed
+		fmt.Printf("Configured watch time window: %s (%d samples with %s interval)\n", chosenWindow, *samples, *interval)
+	}
 
 	ctx := context.Background()
 	config, err := buildKubeConfig(*kubeconfig)

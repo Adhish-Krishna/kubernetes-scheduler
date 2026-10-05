@@ -67,6 +67,14 @@ func (g *GracefulReclaimer) Reclaim(ctx context.Context, pod *metrics.PodMetrics
 		return nil, fmt.Errorf("create graceful redeploy record: %w", err)
 	}
 
+	dep, err := g.client.AppsV1().Deployments(pod.Namespace).Get(ctx, pod.Replicas.OwnerName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get Deployment %s/%s: %w", pod.Namespace, pod.Replicas.OwnerName, err)
+	}
+	if dep.Spec.Replicas != nil && *dep.Spec.Replicas > 1 {
+		return nil, fmt.Errorf("graceful redeploy only supports single-replica Deployments (current replicas: %d)", *dep.Spec.Replicas)
+	}
+
 	zero := int32(0)
 	if _, err := g.client.AppsV1().Deployments(pod.Namespace).UpdateScale(ctx, pod.Replicas.OwnerName, &autoscalingv1.Scale{ObjectMeta: metav1.ObjectMeta{Name: pod.Replicas.OwnerName, Namespace: pod.Namespace}, Spec: autoscalingv1.ScaleSpec{Replicas: zero}}, metav1.UpdateOptions{}); err != nil {
 		return nil, fmt.Errorf("scale Deployment %s/%s to zero: %w", pod.Namespace, pod.Replicas.OwnerName, err)

@@ -42,11 +42,12 @@ func NewClusterAPIHandler(runner *simulation.PipelineRunner, configPath string) 
 		logger:     logger,
 	}
 
-	if h.configPath == "" {
+	if _, err := os.Stat(h.configPath); err != nil {
 		candidates := []string{
 			"config/reclaim_policy.json",
 			"simulator/config/reclaim_policy.json",
 			"../config/reclaim_policy.json",
+			"../../config/reclaim_policy.json",
 		}
 		for _, c := range candidates {
 			if _, err := os.Stat(c); err == nil {
