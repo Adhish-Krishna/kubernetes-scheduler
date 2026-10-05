@@ -32,6 +32,8 @@ type WorkloadSimulationResult struct {
 	ReclaimableCPUMillicores float64                    `json:"reclaimableCpuMillicores"`
 	ReclaimableMemoryBytes   int64                      `json:"reclaimableMemoryBytes"`
 	IsConsistentlyIdle       bool                       `json:"isConsistentlyIdle"`
+	WindowDuration           time.Duration              `json:"windowDuration"`
+	SampleCount              int                        `json:"sampleCount"`
 
 	// Detector Output
 	Classification        detector.WorkloadClass `json:"classification"`

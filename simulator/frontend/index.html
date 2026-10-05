@@ -411,6 +411,7 @@
                   <th>Node</th>
                   <th class="sortable" onclick="window.setSort && window.setSort('cpu')">CPU (Used / Req)</th>
                   <th class="sortable" onclick="window.setSort && window.setSort('mem')">Memory (Used / Req)</th>
+                  <th>Decision Window</th>
                   <th class="sortable" onclick="window.setSort && window.setSort('idle')">Idle Duration</th>
                   <th>Classification</th>
                   <th class="sortable" onclick="window.setSort && window.setSort('score')">Reclaim Score</th>
@@ -573,6 +574,7 @@
                 <th>Node</th>
                 <th>CPU (Used / Req)</th>
                 <th>Memory (Used / Req)</th>
+                <th>Decision Window</th>
                 <th>Idle Duration</th>
                 <th>Classification</th>
                 <th>Reclaim Score</th>
@@ -625,6 +627,27 @@
         <div class="verdict-item">
           <span class="verdict-lbl">Safety Status</span>
           <span id="drawer-verdict-safety" class="verdict-val">-</span>
+        </div>
+        <div class="verdict-item">
+          <span class="verdict-lbl">Decision Window</span>
+          <span id="drawer-verdict-window" class="verdict-val mono" style="color: var(--color-cyan);">-</span>
+        </div>
+      </div>
+
+      <!-- Telemetry Decision Window Evaluation -->
+      <div class="drawer-capabilities-box" style="margin-top: 0.75rem;">
+        <span class="cap-header">Telemetry Decision Window Evaluation</span>
+        <div class="cap-row">
+          <span>Observation Time Window:</span>
+          <strong id="drawer-window-duration" class="mono" style="color: var(--text-bright);">-</strong>
+        </div>
+        <div class="cap-row">
+          <span>Evaluated Sample History:</span>
+          <strong id="drawer-window-samples" class="mono" style="color: var(--text-bright);">-</strong>
+        </div>
+        <div class="cap-row">
+          <span>Consistently Below Thresholds:</span>
+          <strong id="drawer-window-consistent" class="badge-safety-pass">-</strong>
         </div>
       </div>
 

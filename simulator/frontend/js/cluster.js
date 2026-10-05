@@ -155,7 +155,7 @@ export class ClusterController {
   async loadWorkloads() {
     const tbody = document.getElementById("cluster-workloads-tbody");
     if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding: 24px; color: var(--text-dim);">Querying Kubernetes pods and physical Prometheus telemetry...</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="13" style="text-align:center; padding: 24px; color: var(--text-dim);">Querying Kubernetes pods and physical Prometheus telemetry...</td></tr>`;
     }
 
     try {
@@ -195,6 +195,9 @@ export class ClusterController {
           avgMemoryBytes: sim.avgMemoryBytes || 0,
           requestedMemoryBytes: sim.requestedMemoryBytes || (64 * 1024 * 1024),
           detectedIdleDuration: sim.detectedIdleDuration || 0,
+          windowDuration: sim.windowDuration || 0,
+          sampleCount: sim.sampleCount || 0,
+          isConsistentlyIdle: sim.isConsistentlyIdle === true,
           classification: clsStr,
           score: scoreVal,
           action: actionStr,
@@ -212,7 +215,7 @@ export class ClusterController {
     } catch (e) {
       console.error("Failed fetching live workloads:", e);
       if (tbody) {
-        tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding: 24px; color: var(--color-red);">Error discovering workloads: ${e.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="13" style="text-align:center; padding: 24px; color: var(--color-red);">Error discovering workloads: ${e.message}</td></tr>`;
       }
     }
   }
@@ -361,7 +364,7 @@ export class ClusterController {
     if (!tbody) return;
 
     if (!this.workloads || this.workloads.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding: 24px; color: var(--text-dim);">No active workloads found in target namespaces.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="13" style="text-align:center; padding: 24px; color: var(--text-dim);">No active workloads found in target namespaces.</td></tr>`;
       return;
     }
 
@@ -462,6 +465,9 @@ export class ClusterController {
       const memMb = Math.round((w.avgMemoryBytes || 0) / (1024 * 1024));
       const reqMemMb = Math.round((w.requestedMemoryBytes || 0) / (1024 * 1024));
       const memText = `${memMb}M / ${reqMemMb}M`;
+      const winSec = w.windowDuration ? Math.round(w.windowDuration / 1e9) : 40;
+      const sampleCnt = w.sampleCount || 5;
+      const windowText = `${winSec}s (${sampleCnt} smp)`;
       const idleText = (w.detectedIdleDuration > 0) ? `${Math.round(w.detectedIdleDuration / 1e9)}s` : "0s";
       const chkCompatible = (w.capabilities && (w.capabilities.fullReclaimAllowed !== false)) ? `<span style="color:var(--color-green);">YES</span>` : `<span style="color:var(--text-dim);">NO</span>`;
 
@@ -476,6 +482,7 @@ export class ClusterController {
           <td><span class="mono">${w.nodeName || "-"}</span></td>
           <td><span class="mono">${cpuText}</span></td>
           <td><span class="mono">${memText}</span></td>
+          <td><span class="mono badge-window" title="Telemetry sliding window considered: ${winSec} seconds across ${sampleCnt} samples">${windowText}</span></td>
           <td><span class="mono">${idleText}</span></td>
           <td><span class="mono">${w.classification || "ACTIVE"}</span></td>
           <td><span class="mono bold score-highlight">${scoreFmt}</span></td>
