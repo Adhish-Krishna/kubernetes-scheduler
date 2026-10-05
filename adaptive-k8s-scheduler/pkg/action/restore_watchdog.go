@@ -206,4 +206,3 @@ func (w *RestoreWatchdog) recyclePod(ctx context.Context, pod *corev1.Pod, recor
 
 	return nil
 }
-
