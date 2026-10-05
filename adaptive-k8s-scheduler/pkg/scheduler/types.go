@@ -35,21 +35,37 @@ type SchedulerConfig struct {
 
 	// ResyncPeriod is the pod informer resync period.
 	ResyncPeriod time.Duration `json:"resyncPeriod"`
+
+	// DefaultSchedulerName is the destination scheduler for handovers (default: "default-scheduler").
+	DefaultSchedulerName string `json:"defaultSchedulerName"`
+
+	// EnableDefaultSchedulerHandover enables delegation of unschedulable pods to default scheduler (default: true).
+	EnableDefaultSchedulerHandover bool `json:"enableDefaultSchedulerHandover"`
+
+	// HandoverMaxRetries is the maximum scheduling retry attempts before triggering handover (default: 3).
+	HandoverMaxRetries int `json:"handoverMaxRetries"`
+
+	// HandoverBackoffInterval is the delay between scheduling retry attempts (default: 5s).
+	HandoverBackoffInterval time.Duration `json:"handoverBackoffInterval"`
 }
 
 // DefaultSchedulerConfig returns standard production defaults.
 func DefaultSchedulerConfig() *SchedulerConfig {
 	return &SchedulerConfig{
-		SchedulerName:            "adaptive-scheduler",
-		LeaderElect:              true,
-		LeaderElectResourceName: "adaptive-scheduler",
-		LeaderElectNamespace:    "kube-system",
-		HeadroomSafetyBuffer:     1.05,
-		TargetUtilizationCeiling: 0.85,
-		WeightCPU:                0.50,
-		WeightMemory:             0.50,
-		ReclaimedNodeBonus:       15.0,
-		ResyncPeriod:             30 * time.Second,
+		SchedulerName:                  "adaptive-scheduler",
+		LeaderElect:                    true,
+		LeaderElectResourceName:       "adaptive-scheduler",
+		LeaderElectNamespace:          "kube-system",
+		HeadroomSafetyBuffer:           1.05,
+		TargetUtilizationCeiling:       0.85,
+		WeightCPU:                      0.50,
+		WeightMemory:                   0.50,
+		ReclaimedNodeBonus:             15.0,
+		ResyncPeriod:                   30 * time.Second,
+		DefaultSchedulerName:           "default-scheduler",
+		EnableDefaultSchedulerHandover: true,
+		HandoverMaxRetries:             3,
+		HandoverBackoffInterval:        5 * time.Second,
 	}
 }
 

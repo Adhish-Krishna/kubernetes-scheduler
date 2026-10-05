@@ -233,6 +233,21 @@ function bindEvents() {
     });
   }
 
+  // Simulation Custom Decision Window Override
+  const btnApplySimWindow = document.getElementById("btn-apply-sim-window");
+  const inputSimWindow = document.getElementById("sim-custom-window");
+  if (btnApplySimWindow && inputSimWindow) {
+    btnApplySimWindow.addEventListener("click", () => {
+      const sec = parseInt(inputSimWindow.value, 10);
+      if (!isNaN(sec) && sec > 0 && state.cluster && state.cluster.workloads) {
+        state.cluster.workloads.forEach(w => {
+          w.timeWindowSeconds = sec;
+        });
+        executeSimulation();
+      }
+    });
+  }
+
   // Table Search Input
   const tableSearch = document.getElementById("table-search");
   if (tableSearch) {
@@ -378,6 +393,7 @@ function bindEvents() {
       const reqMemMiB = parseInt(fd.get("reqMem"), 10);
       const usageMemMiB = parseInt(fd.get("usageMem"), 10);
       const idleDuration = parseInt(fd.get("idleDuration"), 10);
+      const timeWindowSeconds = parseInt(fd.get("timeWindowSeconds") || 0, 10);
       const qps = parseFloat(fd.get("qps") || 0);
       const network = parseFloat(fd.get("network") || 0);
       const replicas = parseInt(fd.get("replicas") || 3, 10);
@@ -407,6 +423,7 @@ function bindEvents() {
         networkBytesPerSec: network,
         requestQps: qps,
         idleDurationSeconds: idleDuration,
+        timeWindowSeconds: timeWindowSeconds > 0 ? timeWindowSeconds : undefined,
         isIdle: idleDuration > 60 && usageCpu < 100,
         labels: { app: fd.get("name").trim() },
         annotations,
@@ -861,7 +878,7 @@ function renderWorkloadTable(currentState) {
 
   if (filtered.length === 0) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="11" style="text-align: center; color: var(--text-dim); padding: 2rem;">No workloads matching current filters</td>`;
+    tr.innerHTML = `<td colspan="12" style="text-align: center; color: var(--text-dim); padding: 2rem;">No workloads matching current filters</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -889,6 +906,10 @@ function renderWorkloadTable(currentState) {
     const reqCPU = orig.requestedCpuMillis || 0;
     const reqMem = orig.requestedMemoryBytes || 0;
 
+    const winSec = w.windowDuration ? Math.round(w.windowDuration / 1000000000) : 40;
+    const sampleCnt = w.sampleCount || 5;
+    const windowText = `${winSec}s (${sampleCnt} smp)`;
+
     tr.innerHTML = `
       <td>
         <div style="display: flex; flex-direction: column;">
@@ -903,6 +924,9 @@ function renderWorkloadTable(currentState) {
       </td>
       <td>
         <span class="mono" style="font-size: 11px;">${formatMemory(w.avgMemoryBytes)} / <span style="color: var(--text-dim);">${formatMemory(reqMem)}</span></span>
+      </td>
+      <td>
+        <span class="mono badge-window" style="font-size: 11px;" title="Telemetry sliding window considered: ${winSec} seconds across ${sampleCnt} samples">${windowText}</span>
       </td>
       <td>
         <span class="mono" style="font-size: 11px; color: var(--text-dim);">${formatDuration(w.detectedIdleDuration ? w.detectedIdleDuration / 1000000000 : 0)}</span>
@@ -1096,6 +1120,23 @@ function renderDrawer(currentState) {
   if (capSoft) {
     capSoft.textContent = w.capabilities.SoftReclaimAllowed ? "AVAILABLE" : "UNAVAILABLE";
     capSoft.className = w.capabilities.SoftReclaimAllowed ? "badge-safety-pass" : "badge-safety-block";
+  }
+
+  // Populate Decision Window Elements
+  const vWindow = document.getElementById("drawer-verdict-window");
+  const winDurationEl = document.getElementById("drawer-window-duration");
+  const winSamplesEl = document.getElementById("drawer-window-samples");
+  const winConsistentEl = document.getElementById("drawer-window-consistent");
+
+  const winSec = w.windowDuration ? Math.round(w.windowDuration / 1000000000) : 40;
+  const sampleCnt = w.sampleCount || 5;
+
+  if (vWindow) vWindow.textContent = `${winSec}s (${sampleCnt} smp)`;
+  if (winDurationEl) winDurationEl.textContent = `${winSec} seconds`;
+  if (winSamplesEl) winSamplesEl.textContent = `${sampleCnt} telemetry samples`;
+  if (winConsistentEl) {
+    winConsistentEl.textContent = w.isConsistentlyIdle ? "YES (All samples idle)" : "NO (Fluctuating/Active)";
+    winConsistentEl.className = w.isConsistentlyIdle ? "badge-safety-pass" : "badge-safety-block";
   }
 
   // Render 9 Factor Cards

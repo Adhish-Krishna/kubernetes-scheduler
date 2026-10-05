@@ -144,22 +144,22 @@ func TestHandoverManager_HasReclaimableCandidates(t *testing.T) {
 	}
 
 	// Active pod with high CPU usage -> false
-	cache.UpdatePod(&metrics.PodMetrics{
-		Namespace:           "default",
-		Name:                "heavy-app",
-		Phase:               corev1.PodRunning,
-		TotalUsageCPUMillis: 500.0,
+	cache.SetPod(&metrics.PodMetrics{
+		Namespace:                "default",
+		Name:                     "heavy-app",
+		Phase:                    corev1.PodRunning,
+		TotalUsageCPUMillicores: 500.0,
 	})
 	if mgr.HasReclaimableCandidates(cache) {
 		t.Errorf("expected false for high-usage pod")
 	}
 
 	// Idle pod with low CPU usage -> true
-	cache.UpdatePod(&metrics.PodMetrics{
-		Namespace:           "default",
-		Name:                "idle-app",
-		Phase:               corev1.PodRunning,
-		TotalUsageCPUMillis: 5.0,
+	cache.SetPod(&metrics.PodMetrics{
+		Namespace:                "default",
+		Name:                     "idle-app",
+		Phase:                    corev1.PodRunning,
+		TotalUsageCPUMillicores: 5.0,
 	})
 	if !mgr.HasReclaimableCandidates(cache) {
 		t.Errorf("expected true when idle pod with 5m CPU exists")

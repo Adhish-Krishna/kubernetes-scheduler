@@ -7,6 +7,52 @@ export class ClusterController {
     this.workloads = [];
     this.nodes = [];
     this.popoverBound = false;
+    this.customWindowSeconds = 60;
+  }
+
+  setCustomWindow(seconds) {
+    seconds = parseInt(seconds, 10);
+    if (isNaN(seconds) || seconds <= 0) seconds = 60;
+    this.customWindowSeconds = seconds;
+
+    const input = document.getElementById("input-custom-window");
+    const unitSelect = document.getElementById("select-custom-window-unit");
+    if (input) input.value = seconds;
+    if (unitSelect) unitSelect.value = "s";
+
+    [30, 60, 300, 900].forEach((s) => {
+      const chip = document.getElementById(`chip-win-${s}`);
+      if (chip) {
+        if (s === seconds) chip.classList.add("active");
+        else chip.classList.remove("active");
+      }
+    });
+
+    this.loadWorkloads();
+  }
+
+  applyCustomWindowFromInput() {
+    const input = document.getElementById("input-custom-window");
+    const unitSelect = document.getElementById("select-custom-window-unit");
+    let val = input ? parseFloat(input.value) : 60;
+    if (isNaN(val) || val <= 0) val = 60;
+
+    const unit = unitSelect ? unitSelect.value : "s";
+    let seconds = Math.round(val);
+    if (unit === "m") seconds = Math.round(val * 60);
+    else if (unit === "h") seconds = Math.round(val * 3600);
+
+    this.customWindowSeconds = seconds;
+
+    [30, 60, 300, 900].forEach((s) => {
+      const chip = document.getElementById(`chip-win-${s}`);
+      if (chip) {
+        if (s === seconds) chip.classList.add("active");
+        else chip.classList.remove("active");
+      }
+    });
+
+    this.loadWorkloads();
   }
 
   async init() {
@@ -155,11 +201,12 @@ export class ClusterController {
   async loadWorkloads() {
     const tbody = document.getElementById("cluster-workloads-tbody");
     if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding: 24px; color: var(--text-dim);">Querying Kubernetes pods and physical Prometheus telemetry...</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="13" style="text-align:center; padding: 24px; color: var(--text-dim);">Querying Kubernetes pods and physical Prometheus telemetry (Window: ${this.customWindowSeconds}s)...</td></tr>`;
     }
 
     try {
-      const resp = await fetch("/api/workloads");
+      const winParam = this.customWindowSeconds ? `?window=${this.customWindowSeconds}` : "";
+      const resp = await fetch(`/api/workloads${winParam}`);
       if (!resp.ok) throw new Error("HTTP " + resp.status);
       const raw = await resp.json();
       const rawList = Array.isArray(raw) ? raw : (raw.workloads || []);
@@ -195,6 +242,9 @@ export class ClusterController {
           avgMemoryBytes: sim.avgMemoryBytes || 0,
           requestedMemoryBytes: sim.requestedMemoryBytes || (64 * 1024 * 1024),
           detectedIdleDuration: sim.detectedIdleDuration || 0,
+          windowDuration: sim.windowDuration || 0,
+          sampleCount: sim.sampleCount || 0,
+          isConsistentlyIdle: sim.isConsistentlyIdle === true,
           classification: clsStr,
           score: scoreVal,
           action: actionStr,
@@ -212,7 +262,7 @@ export class ClusterController {
     } catch (e) {
       console.error("Failed fetching live workloads:", e);
       if (tbody) {
-        tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding: 24px; color: var(--color-red);">Error discovering workloads: ${e.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="13" style="text-align:center; padding: 24px; color: var(--color-red);">Error discovering workloads: ${e.message}</td></tr>`;
       }
     }
   }
@@ -361,7 +411,7 @@ export class ClusterController {
     if (!tbody) return;
 
     if (!this.workloads || this.workloads.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding: 24px; color: var(--text-dim);">No active workloads found in target namespaces.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="13" style="text-align:center; padding: 24px; color: var(--text-dim);">No active workloads found in target namespaces.</td></tr>`;
       return;
     }
 
@@ -462,6 +512,9 @@ export class ClusterController {
       const memMb = Math.round((w.avgMemoryBytes || 0) / (1024 * 1024));
       const reqMemMb = Math.round((w.requestedMemoryBytes || 0) / (1024 * 1024));
       const memText = `${memMb}M / ${reqMemMb}M`;
+      const winSec = w.windowDuration ? Math.round(w.windowDuration / 1e9) : 40;
+      const sampleCnt = w.sampleCount || 5;
+      const windowText = `${winSec}s (${sampleCnt} smp)`;
       const idleText = (w.detectedIdleDuration > 0) ? `${Math.round(w.detectedIdleDuration / 1e9)}s` : "0s";
       const chkCompatible = (w.capabilities && (w.capabilities.fullReclaimAllowed !== false)) ? `<span style="color:var(--color-green);">YES</span>` : `<span style="color:var(--text-dim);">NO</span>`;
 
@@ -476,6 +529,7 @@ export class ClusterController {
           <td><span class="mono">${w.nodeName || "-"}</span></td>
           <td><span class="mono">${cpuText}</span></td>
           <td><span class="mono">${memText}</span></td>
+          <td><span class="mono badge-window" title="Telemetry sliding window considered: ${winSec} seconds across ${sampleCnt} samples">${windowText}</span></td>
           <td><span class="mono">${idleText}</span></td>
           <td><span class="mono">${w.classification || "ACTIVE"}</span></td>
           <td><span class="mono bold score-highlight">${scoreFmt}</span></td>
@@ -589,17 +643,32 @@ export class ClusterController {
     try {
       const resp = await fetch("/api/reclaim/config");
       const cfg = await resp.json();
-      document.getElementById("cfg-full-reclaim").value = cfg.thresholds.full_reclaim;
-      document.getElementById("cfg-soft-reclaim").value = cfg.thresholds.soft_reclaim;
-      document.getElementById("cfg-w-cpu").value = cfg.weights.cpu;
-      document.getElementById("cfg-w-mem").value = cfg.weights.memory;
-      document.getElementById("cfg-w-idle").value = cfg.weights.idle;
-      document.getElementById("cfg-w-benefit").value = cfg.weights.benefit;
-      document.getElementById("cfg-w-replica").value = cfg.weights.replica;
-      document.getElementById("cfg-w-priority").value = cfg.weights.priority;
-      document.getElementById("cfg-w-pdb").value = cfg.weights.pdb;
-      document.getElementById("cfg-w-state").value = cfg.weights.state;
-      document.getElementById("cfg-w-checkpoint").value = cfg.weights.checkpoint;
+      this.currentConfig = cfg;
+
+      const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val !== undefined && val !== null ? val : "";
+      };
+
+      if (cfg.thresholds) {
+        setVal("cfg-full-reclaim", cfg.thresholds.full_reclaim);
+        setVal("cfg-soft-reclaim", cfg.thresholds.soft_reclaim);
+      }
+
+      if (cfg.weights) {
+        setVal("cfg-w-cpu", cfg.weights.cpu);
+        setVal("cfg-w-mem", cfg.weights.memory);
+        setVal("cfg-w-idle", cfg.weights.idle);
+        setVal("cfg-w-benefit", cfg.weights.benefit);
+        setVal("cfg-w-replica", cfg.weights.replica);
+        setVal("cfg-w-priority", cfg.weights.priority);
+        setVal("cfg-w-pdb", cfg.weights.pdb);
+        setVal("cfg-w-state", cfg.weights.state);
+        
+        const chkInput = document.getElementById("cfg-w-checkpoint") || document.getElementById("cfg-w-chk");
+        if (chkInput) chkInput.value = cfg.weights.checkpoint;
+      }
+
       modal.classList.add("active");
     } catch (e) {
       console.error("Failed loading reclaim config:", e);
@@ -608,21 +677,35 @@ export class ClusterController {
 
   async handleSaveConfig(e) {
     e.preventDefault();
+    const getVal = (id, fallbackId) => {
+      const el = document.getElementById(id) || (fallbackId ? document.getElementById(fallbackId) : null);
+      return el ? parseFloat(el.value) : 0;
+    };
+
     const payload = {
       weights: {
-        cpu: parseFloat(document.getElementById("cfg-w-cpu").value),
-        memory: parseFloat(document.getElementById("cfg-w-mem").value),
-        idle: parseFloat(document.getElementById("cfg-w-idle").value),
-        benefit: parseFloat(document.getElementById("cfg-w-benefit").value),
-        replica: parseFloat(document.getElementById("cfg-w-replica").value),
-        priority: parseFloat(document.getElementById("cfg-w-priority").value),
-        pdb: parseFloat(document.getElementById("cfg-w-pdb").value),
-        state: parseFloat(document.getElementById("cfg-w-state").value),
-        checkpoint: parseFloat(document.getElementById("cfg-w-checkpoint").value),
+        cpu: getVal("cfg-w-cpu"),
+        memory: getVal("cfg-w-mem"),
+        idle: getVal("cfg-w-idle"),
+        benefit: getVal("cfg-w-benefit"),
+        replica: getVal("cfg-w-replica"),
+        priority: getVal("cfg-w-priority"),
+        pdb: getVal("cfg-w-pdb"),
+        state: getVal("cfg-w-state"),
+        checkpoint: getVal("cfg-w-checkpoint", "cfg-w-chk"),
       },
       thresholds: {
-        full_reclaim: parseFloat(document.getElementById("cfg-full-reclaim").value),
-        soft_reclaim: parseFloat(document.getElementById("cfg-soft-reclaim").value),
+        full_reclaim: getVal("cfg-full-reclaim"),
+        soft_reclaim: getVal("cfg-soft-reclaim"),
+      },
+      normalization: this.currentConfig?.normalization || {
+        idle_max_duration_sec: 60,
+        benefit_max_cpu_millis: 2000,
+        benefit_max_mem_bytes: 4294967296,
+      },
+      safety: this.currentConfig?.safety || {
+        max_priority_for_reclaim: 100000,
+        min_replicas_required: 0,
       },
     };
 
@@ -632,11 +715,15 @@ export class ClusterController {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        throw new Error(errData.error || ("HTTP " + resp.status));
+      }
       document.getElementById("modal-reclaim-config").classList.remove("active");
       await this.refresh();
     } catch (err) {
       console.error("Save config error:", err);
+      alert("Failed to save reclaim policy: " + err.message);
     }
   }
 }

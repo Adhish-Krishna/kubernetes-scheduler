@@ -92,6 +92,8 @@ func (r *PipelineRunner) ExecuteSingleWorkload(sw models.SyntheticWorkload) mode
 		ReclaimableCPUMillicores: profile.ReclaimableCPUMillicores,
 		ReclaimableMemoryBytes:   profile.ReclaimableMemoryBytes,
 		IsConsistentlyIdle:       profile.IsConsistentlyIdle,
+		WindowDuration:           profile.WindowDuration,
+		SampleCount:              profile.SampleCount,
 		Classification:           classification.Class,
 		ClassificationReasons:    classification.Reasons,
 		DetectedIdleDuration:     classification.IdleDuration,

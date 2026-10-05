@@ -65,15 +65,22 @@ func ToPodMetricsAndWindow(sw models.SyntheticWorkload) (*metrics.PodMetrics, *m
 		}
 	}
 
-	// Create sliding window ring buffer (5 samples default capacity)
-	const windowCap = 5
+	// Create sliding window ring buffer (5 samples default capacity or derived from TimeWindowSeconds)
+	windowCap := 5
+	step := 10 * time.Second
+	if sw.TimeWindowSeconds > 0 {
+		windowCap = int(sw.TimeWindowSeconds / 10)
+		if windowCap < 2 {
+			windowCap = 2
+		}
+	}
 	window := metrics.NewMetricWindow(windowCap)
 	now := time.Now()
 
 	// Fill window with samples representing the telemetry state
 	for i := 0; i < windowCap; i++ {
 		window.AddSample(metrics.MetricSample{
-			Timestamp:          now.Add(-time.Duration(windowCap-1-i) * 10 * time.Second),
+			Timestamp:          now.Add(-time.Duration(windowCap-1-i) * step),
 			CPUMillicores:      sw.UsageCPUMillicores,
 			MemoryWorkingSet:   sw.UsageMemoryBytes,
 			MemoryRSS:          sw.UsageMemoryBytes,

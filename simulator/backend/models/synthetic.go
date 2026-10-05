@@ -41,6 +41,7 @@ type SyntheticWorkload struct {
 	NetworkBytesPerSec   float64           `json:"networkBytesPerSec"`
 	RequestQPS           float64           `json:"requestQps"`
 	IdleDurationSeconds  int64             `json:"idleDurationSeconds"`
+	TimeWindowSeconds    int64             `json:"timeWindowSeconds,omitempty"`
 	IsIdle               bool              `json:"isIdle"`
 	Labels               map[string]string `json:"labels,omitempty"`
 	Annotations          map[string]string `json:"annotations,omitempty"`

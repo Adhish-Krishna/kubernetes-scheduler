@@ -8,6 +8,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/decision"
 )
 
 func TestSchemeRegistration(t *testing.T) {
@@ -183,8 +185,9 @@ func TestToDecisionPolicy(t *testing.T) {
 	if defaultPol == nil {
 		t.Fatalf("ToDecisionPolicy(nil) returned nil")
 	}
-	if defaultPol.FullReclaimScoreThreshold != 0.75 {
-		t.Errorf("Expected default FullReclaimScoreThreshold 0.75, got %f", defaultPol.FullReclaimScoreThreshold)
+	expectedThreshold := decision.DefaultPolicy().FullReclaimScoreThreshold
+	if defaultPol.FullReclaimScoreThreshold != expectedThreshold {
+		t.Errorf("Expected default FullReclaimScoreThreshold %f, got %f", expectedThreshold, defaultPol.FullReclaimScoreThreshold)
 	}
 
 	// Test custom spec

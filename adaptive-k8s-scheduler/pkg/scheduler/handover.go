@@ -60,7 +60,7 @@ func (h *HandoverManager) HasReclaimableCandidates(cache *metrics.MetricsCache) 
 			continue
 		}
 		// Consider candidate if CPU usage is under 30 millicores or memory utilization is low
-		if pod.TotalUsageCPUMillis < 30.0 {
+		if pod.TotalUsageCPUMillicores < 30.0 {
 			return true
 		}
 	}
