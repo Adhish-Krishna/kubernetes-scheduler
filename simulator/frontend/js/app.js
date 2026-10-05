@@ -233,6 +233,21 @@ function bindEvents() {
     });
   }
 
+  // Simulation Custom Decision Window Override
+  const btnApplySimWindow = document.getElementById("btn-apply-sim-window");
+  const inputSimWindow = document.getElementById("sim-custom-window");
+  if (btnApplySimWindow && inputSimWindow) {
+    btnApplySimWindow.addEventListener("click", () => {
+      const sec = parseInt(inputSimWindow.value, 10);
+      if (!isNaN(sec) && sec > 0 && state.cluster && state.cluster.workloads) {
+        state.cluster.workloads.forEach(w => {
+          w.timeWindowSeconds = sec;
+        });
+        executeSimulation();
+      }
+    });
+  }
+
   // Table Search Input
   const tableSearch = document.getElementById("table-search");
   if (tableSearch) {
@@ -378,6 +393,7 @@ function bindEvents() {
       const reqMemMiB = parseInt(fd.get("reqMem"), 10);
       const usageMemMiB = parseInt(fd.get("usageMem"), 10);
       const idleDuration = parseInt(fd.get("idleDuration"), 10);
+      const timeWindowSeconds = parseInt(fd.get("timeWindowSeconds") || 0, 10);
       const qps = parseFloat(fd.get("qps") || 0);
       const network = parseFloat(fd.get("network") || 0);
       const replicas = parseInt(fd.get("replicas") || 3, 10);
@@ -407,6 +423,7 @@ function bindEvents() {
         networkBytesPerSec: network,
         requestQps: qps,
         idleDurationSeconds: idleDuration,
+        timeWindowSeconds: timeWindowSeconds > 0 ? timeWindowSeconds : undefined,
         isIdle: idleDuration > 60 && usageCpu < 100,
         labels: { app: fd.get("name").trim() },
         annotations,

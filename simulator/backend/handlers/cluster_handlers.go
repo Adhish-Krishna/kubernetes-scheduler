@@ -7,8 +7,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
+	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/decision"
+	"github.com/finalyearproject/adaptive-k8s-scheduler/pkg/detector"
 	"go.uber.org/zap"
 
 	"simulator/backend/cluster"
@@ -152,6 +155,14 @@ func (h *ClusterAPIHandler) HandleWorkloads(w http.ResponseWriter, r *http.Reque
 		namespace = "ecommerce"
 	}
 
+	windowStr := r.URL.Query().Get("window")
+	var customWindowSec int64
+	if windowStr != "" {
+		if sec, err := strconv.ParseInt(windowStr, 10, 64); err == nil && sec > 0 {
+			customWindowSec = sec
+		}
+	}
+
 	workloads, err := h.discoverer.DiscoverWorkloads(ctx, namespace)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"Discovery failed: %s"}`, err.Error()), http.StatusInternalServerError)
@@ -162,13 +173,21 @@ func (h *ClusterAPIHandler) HandleWorkloads(w http.ResponseWriter, r *http.Reque
 		workloads, _ = h.bridge.EnrichWorkloads(ctx, workloads)
 	}
 
+	for i := range workloads {
+		if customWindowSec > 0 {
+			workloads[i].TimeWindowSeconds = customWindowSec
+		}
+	}
+
 	type WorkloadClusterResponse struct {
 		Simulation models.WorkloadSimulationResult `json:"simulation"`
 		Lifecycle  *cluster.WorkloadClusterState   `json:"lifecycle"`
 	}
 
 	results := make([]WorkloadClusterResponse, 0, len(workloads))
+	seenPods := make(map[string]bool)
 	for _, sw := range workloads {
+		seenPods[sw.Namespace+"/"+sw.Name] = true
 		simResult := h.runner.ExecuteSingleWorkload(sw)
 
 		safetyPassed := simResult.Capabilities.FullReclaimAllowed || simResult.Capabilities.SoftReclaimAllowed
@@ -180,6 +199,40 @@ func (h *ClusterAPIHandler) HandleWorkloads(w http.ResponseWriter, r *http.Reque
 			Simulation: simResult,
 			Lifecycle:  lifecycle,
 		})
+	}
+
+	// Keep reclaimed / restoring workloads visible so users can see reclaim results & click Restore
+	evalWindow := time.Duration(customWindowSec) * time.Second
+	if evalWindow <= 0 {
+		evalWindow = 50 * time.Second
+	}
+	for key, st := range h.stateStore.GetAll() {
+		if seenPods[key] {
+			continue
+		}
+		if namespace != "" && st.Namespace != namespace {
+			continue
+		}
+		if st.State == cluster.StateReclaimed || st.State == cluster.StateCheckpointed || st.State == cluster.StateRestoring {
+			results = append(results, WorkloadClusterResponse{
+				Simulation: models.WorkloadSimulationResult{
+					Name:               st.Name,
+					Namespace:          st.Namespace,
+					Action:             decision.ActionFullReclaim,
+					Score:              st.Score,
+					Phase:              "Reclaimed",
+					Classification:     detector.ClassIdle,
+					IsConsistentlyIdle: true,
+					WindowDuration:     evalWindow,
+					Capabilities: decision.Capabilities{
+						FullReclaimAllowed: true,
+						SoftReclaimAllowed: true,
+					},
+					DecisionReasons: st.DecisionReasons,
+				},
+				Lifecycle: st,
+			})
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

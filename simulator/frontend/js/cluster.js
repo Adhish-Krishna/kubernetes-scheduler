@@ -7,6 +7,52 @@ export class ClusterController {
     this.workloads = [];
     this.nodes = [];
     this.popoverBound = false;
+    this.customWindowSeconds = 60;
+  }
+
+  setCustomWindow(seconds) {
+    seconds = parseInt(seconds, 10);
+    if (isNaN(seconds) || seconds <= 0) seconds = 60;
+    this.customWindowSeconds = seconds;
+
+    const input = document.getElementById("input-custom-window");
+    const unitSelect = document.getElementById("select-custom-window-unit");
+    if (input) input.value = seconds;
+    if (unitSelect) unitSelect.value = "s";
+
+    [30, 60, 300, 900].forEach((s) => {
+      const chip = document.getElementById(`chip-win-${s}`);
+      if (chip) {
+        if (s === seconds) chip.classList.add("active");
+        else chip.classList.remove("active");
+      }
+    });
+
+    this.loadWorkloads();
+  }
+
+  applyCustomWindowFromInput() {
+    const input = document.getElementById("input-custom-window");
+    const unitSelect = document.getElementById("select-custom-window-unit");
+    let val = input ? parseFloat(input.value) : 60;
+    if (isNaN(val) || val <= 0) val = 60;
+
+    const unit = unitSelect ? unitSelect.value : "s";
+    let seconds = Math.round(val);
+    if (unit === "m") seconds = Math.round(val * 60);
+    else if (unit === "h") seconds = Math.round(val * 3600);
+
+    this.customWindowSeconds = seconds;
+
+    [30, 60, 300, 900].forEach((s) => {
+      const chip = document.getElementById(`chip-win-${s}`);
+      if (chip) {
+        if (s === seconds) chip.classList.add("active");
+        else chip.classList.remove("active");
+      }
+    });
+
+    this.loadWorkloads();
   }
 
   async init() {
@@ -155,11 +201,12 @@ export class ClusterController {
   async loadWorkloads() {
     const tbody = document.getElementById("cluster-workloads-tbody");
     if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="13" style="text-align:center; padding: 24px; color: var(--text-dim);">Querying Kubernetes pods and physical Prometheus telemetry...</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="13" style="text-align:center; padding: 24px; color: var(--text-dim);">Querying Kubernetes pods and physical Prometheus telemetry (Window: ${this.customWindowSeconds}s)...</td></tr>`;
     }
 
     try {
-      const resp = await fetch("/api/workloads");
+      const winParam = this.customWindowSeconds ? `?window=${this.customWindowSeconds}` : "";
+      const resp = await fetch(`/api/workloads${winParam}`);
       if (!resp.ok) throw new Error("HTTP " + resp.status);
       const raw = await resp.json();
       const rawList = Array.isArray(raw) ? raw : (raw.workloads || []);
