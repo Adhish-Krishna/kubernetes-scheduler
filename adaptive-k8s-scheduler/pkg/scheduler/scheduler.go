@@ -29,6 +29,10 @@ type AdaptiveScheduler struct {
 	podQueue       chan *corev1.Pod
 	reclaimedNodes map[string]time.Time
 	reclaimedMu    sync.RWMutex
+
+	handoverMgr  *HandoverManager
+	retryTracker map[string]int
+	retryMu      sync.Mutex
 }
 
 // NewAdaptiveScheduler creates a new AdaptiveScheduler instance.
@@ -56,6 +60,8 @@ func NewAdaptiveScheduler(
 		logger:         logger,
 		podQueue:       make(chan *corev1.Pod, 256),
 		reclaimedNodes: make(map[string]time.Time),
+		handoverMgr:    NewHandoverManager(client, recorder, cfg.DefaultSchedulerName, logger),
+		retryTracker:   make(map[string]int),
 	}
 }
 
@@ -204,8 +210,50 @@ func (s *AdaptiveScheduler) scheduleOne(ctx context.Context, pod *corev1.Pod) {
 		if s.eventRecorder != nil {
 			s.eventRecorder.Eventf(pod, corev1.EventTypeWarning, "FailedScheduling", "%v", err)
 		}
+
+		if s.config.EnableDefaultSchedulerHandover && s.handoverMgr != nil {
+			s.retryMu.Lock()
+			s.retryTracker[podKey]++
+			attempts := s.retryTracker[podKey]
+			s.retryMu.Unlock()
+
+			// If there are reclaimable candidate pods on nodes and we haven't exceeded MaxRetries,
+			// give the reclamation engine time to reclaim space before handing over.
+			if attempts < s.config.HandoverMaxRetries && s.handoverMgr.HasReclaimableCandidates(s.metricsCache) {
+				s.logger.Info("Node saturated but reclaimable candidates exist; delaying handover to allow reclamation",
+					zap.String("pod", podKey),
+					zap.Int("attempt", attempts),
+					zap.Int("maxRetries", s.config.HandoverMaxRetries),
+				)
+				time.AfterFunc(s.config.HandoverBackoffInterval, func() {
+					s.enqueueIfTargeted(pod)
+				})
+				return
+			}
+
+			// All nodes exhausted and no reclaimable workloads (or retries exceeded): hand over to default-scheduler
+			s.logger.Warn("All nodes lack headroom and no reclaimable capacity available; handing over to default-scheduler",
+				zap.String("pod", podKey),
+				zap.Int("attempts", attempts),
+			)
+			s.retryMu.Lock()
+			delete(s.retryTracker, podKey)
+			s.retryMu.Unlock()
+
+			if handoverErr := s.handoverMgr.HandoverPod(ctx, pod, err.Error()); handoverErr != nil {
+				s.logger.Error("Failed executing handover to default-scheduler",
+					zap.String("pod", podKey),
+					zap.Error(handoverErr),
+				)
+			}
+		}
 		return
 	}
+
+	// Successful schedule: clear retry tracker
+	s.retryMu.Lock()
+	delete(s.retryTracker, podKey)
+	s.retryMu.Unlock()
 
 	// Step 3: Bind Phase
 	binding := &corev1.Binding{
