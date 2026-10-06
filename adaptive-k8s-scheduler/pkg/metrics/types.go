@@ -57,6 +57,7 @@ type PodMetrics struct {
 	Name              string                  `json:"name"`
 	UID               types.UID               `json:"uid"`
 	NodeName          string                  `json:"nodeName"`
+	SchedulerName     string                  `json:"schedulerName"`
 	Phase             corev1.PodPhase         `json:"phase"`
 	RestartPolicy     corev1.RestartPolicy    `json:"restartPolicy"`
 	ContainerExitCode int32                   `json:"containerExitCode,omitempty"`

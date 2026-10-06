@@ -765,55 +765,9 @@ export class ClusterController {
     }
   }
 
-  async handleSaveConfig(e) {
-    e.preventDefault();
-    const getVal = (id, fallbackId) => {
-      const el = document.getElementById(id) || (fallbackId ? document.getElementById(fallbackId) : null);
-      return el ? parseFloat(el.value) : 0;
-    };
-
-    const payload = {
-      weights: {
-        cpu: getVal("cfg-w-cpu"),
-        memory: getVal("cfg-w-mem"),
-        idle: getVal("cfg-w-idle"),
-        benefit: getVal("cfg-w-benefit"),
-        replica: getVal("cfg-w-replica"),
-        priority: getVal("cfg-w-priority"),
-        pdb: getVal("cfg-w-pdb"),
-        state: getVal("cfg-w-state"),
-        checkpoint: getVal("cfg-w-checkpoint", "cfg-w-chk"),
-      },
-      thresholds: {
-        full_reclaim: getVal("cfg-full-reclaim"),
-        soft_reclaim: getVal("cfg-soft-reclaim"),
-      },
-      normalization: this.currentConfig?.normalization || {
-        idle_max_duration_sec: 60,
-        benefit_max_cpu_millis: 2000,
-        benefit_max_mem_bytes: 4294967296,
-      },
-      safety: this.currentConfig?.safety || {
-        max_priority_for_reclaim: 100000,
-        min_replicas_required: 0,
-      },
-    };
-
-    try {
-      const resp = await fetch("/api/reclaim/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!resp.ok) {
-        const errData = await resp.json().catch(() => ({}));
-        throw new Error(errData.error || ("HTTP " + resp.status));
-      }
-      document.getElementById("modal-reclaim-config").classList.remove("active");
-      await this.refresh();
-    } catch (err) {
-      console.error("Save config error:", err);
-      alert("Failed to save reclaim policy: " + err.message);
-    }
+  handleSaveConfig(e) {
+    if (e) e.preventDefault();
+    const modal = document.getElementById("modal-reclaim-config");
+    if (modal) modal.classList.remove("active");
   }
 }

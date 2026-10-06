@@ -21,7 +21,7 @@ func NewAPIHandler() *APIHandler {
 	runner := simulation.NewPipelineRunner()
 	return &APIHandler{
 		runner:  runner,
-		cluster: NewClusterAPIHandler(runner, "config/reclaim_policy.json"),
+		cluster: NewClusterAPIHandler(runner),
 		traffic: NewTrafficAPIHandler(),
 	}
 }
