@@ -248,11 +248,16 @@ export class TrafficMonitorController {
           classification: clsStr,
           score: scoreVal,
           action: actionStr,
-          lifecycleState: life.state || "RUNNING",
+          lifecycleState: life.state || (sim.phase === "Reclaimed" ? "RECLAIMED" : "RUNNING"),
           decisionReasons: sim.decisionReasons || life.decisionReasons || [],
           rawItem: item,
         };
       });
+
+      // Update fully reclaimed counter in stats strip
+      const reclaimedCount = this.workloads.filter(w => w.lifecycleState === "RECLAIMED" || w.phase === "Reclaimed").length;
+      const elReclaimed = document.getElementById("traffic-stat-reclaimed");
+      if (elReclaimed) elReclaimed.textContent = reclaimedCount.toString();
 
       this.renderTable();
     } catch (e) {
@@ -272,9 +277,13 @@ export class TrafficMonitorController {
     }
 
     tbody.innerHTML = this.workloads.map((w, idx) => {
-      // 1. Status Badge: (idle or active)
+      const isReclaimed = (w.lifecycleState === "RECLAIMED" || w.lifecycleState === "CHECKPOINTED" || w.phase === "Reclaimed");
+
+      // 1. Status Badge: (reclaimed, idle, or active)
       let statusBadge = "";
-      if (w.classification === "IDLE") {
+      if (isReclaimed) {
+        statusBadge = `<span class="badge-status-pill reclaimed" style="background: rgba(168, 85, 247, 0.22); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.5); font-weight:700;">● RECLAIMED (DORMANT)</span>`;
+      } else if (w.classification === "IDLE") {
         const idleSec = Math.round(w.detectedIdleDuration / 1e9) || 0;
         const idleLabel = idleSec > 0 ? `IDLE (${idleSec}s)` : "IDLE";
         statusBadge = `<span class="badge-status-pill idle" style="background: rgba(245, 158, 11, 0.18); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); font-weight:700;">● ${idleLabel}</span>`;
@@ -284,8 +293,8 @@ export class TrafficMonitorController {
 
       // 2. Scheduler Decision: (full reclaim, soft reclaim, no action / keep)
       let decisionBadge = "";
-      if (w.action === "FULL_RECLAIM") {
-        decisionBadge = `<span class="badge-status-pill blocked" style="background: rgba(168, 85, 247, 0.22); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.5); font-weight:700;">FULL RECLAIM</span>`;
+      if (isReclaimed || w.action === "FULL_RECLAIM") {
+        decisionBadge = `<span class="badge-status-pill blocked" style="background: rgba(168, 85, 247, 0.25); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.6); font-weight:700;">FULL RECLAIM</span>`;
       } else if (w.action === "SOFT_RECLAIM") {
         decisionBadge = `<span class="badge-status-pill soft" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4); font-weight:700;">SOFT RECLAIM</span>`;
       } else {
@@ -295,77 +304,173 @@ export class TrafficMonitorController {
       // Reclaim Score Bar
       const scoreNum = typeof w.score === "number" ? w.score : 0;
       const scorePct = Math.min(100, Math.max(0, Math.round(scoreNum * 100)));
+      const scoreColor = isReclaimed ? "#c084fc" : "var(--color-brand)";
       const scoreBar = `
         <div style="display:flex; align-items:center; gap:8px;">
           <div style="width:60px; height:6px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden;">
-            <div style="width:${scorePct}%; height:100%; background:var(--color-brand); border-radius:3px;"></div>
+            <div style="width:${scorePct}%; height:100%; background:${scoreColor}; border-radius:3px;"></div>
           </div>
-          <span class="mono bold" style="font-size:12px;">${scoreNum.toFixed(4)}</span>
+          <span class="mono bold" style="font-size:12px; ${isReclaimed ? 'color:#c084fc;' : ''}">${scoreNum.toFixed(4)}</span>
         </div>`;
 
       // CPU usage
       const cpuUsed = w.avgCpuMillicores.toFixed(1);
       const cpuReq = w.requestedCpuMillis;
       const cpuPct = cpuReq > 0 ? Math.round((w.avgCpuMillicores / cpuReq) * 100) : 0;
+      let cpuColHtml = "";
+      if (isReclaimed) {
+        cpuColHtml = `
+          <div class="mono" style="font-size:11px; color:#c084fc;">0m / ${cpuReq}m</div>
+          <div style="font-size:10px; color:#a78bfa;">${cpuReq}m freed</div>`;
+      } else {
+        cpuColHtml = `
+          <div class="mono" style="font-size:11px;">${cpuUsed}m / ${cpuReq}m</div>
+          <div style="font-size:10px; color:var(--text-dim);">${cpuPct}% req</div>`;
+      }
 
       // Memory usage
       const memMb = (w.avgMemoryBytes / (1024 * 1024)).toFixed(1);
       const memReqMb = Math.round(w.requestedMemoryBytes / (1024 * 1024));
+      let memColHtml = "";
+      if (isReclaimed) {
+        memColHtml = `
+          <div class="mono" style="font-size:11px; color:#c084fc;">0M / ${memReqMb}M</div>
+          <div style="font-size:10px; color:#a78bfa;">${memReqMb}M freed</div>`;
+      } else {
+        memColHtml = `
+          <div class="mono" style="font-size:11px;">${memMb}M / ${memReqMb}M</div>`;
+      }
 
       // QPS
       const qpsVal = (w.qps || 0).toFixed(2);
 
       // Idle Duration
       const idleSecTotal = Math.round(w.detectedIdleDuration / 1e9);
-      const idleStr = idleSecTotal > 0 ? `${idleSecTotal}s` : "0s";
+      const idleStr = isReclaimed ? "Dormant" : (idleSecTotal > 0 ? `${idleSecTotal}s` : "0s");
 
       // Lifecycle State
       let statePill = `<span class="badge-status-pill pass" style="font-size:11px;">${w.lifecycleState}</span>`;
-      if (w.lifecycleState === "CANDIDATE") {
+      if (isReclaimed) {
+        statePill = `<span class="badge-status-pill reclaimed" style="font-size:11px; background: rgba(168, 85, 247, 0.22); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.5); font-weight:700;">RECLAIMED</span>`;
+      } else if (w.lifecycleState === "CANDIDATE") {
         statePill = `<span class="badge-status-pill soft" style="font-size:11px;">CANDIDATE</span>`;
       } else if (w.lifecycleState === "CHECKPOINTED" || w.lifecycleState === "RESTORED") {
         statePill = `<span class="badge-status-pill blocked" style="font-size:11px; color:#c084fc; border-color:#c084fc;">${w.lifecycleState}</span>`;
       }
 
+      // Actions Column
+      let actionsHtml = "";
+      if (isReclaimed) {
+        actionsHtml = `
+          <button class="btn btn-restore-traffic" data-ns="${this.escape(w.namespace)}" data-name="${this.escape(w.name)}" style="background:#8b5cf6; color:#fff; border:1px solid #a78bfa; padding:2px 8px; font-size:11px; font-weight:600; border-radius:4px; cursor:pointer;" title="Reconstitute reclaimed workload">
+            Restore
+          </button>
+          <button class="btn btn-subtle btn-inspect-traffic" data-idx="${idx}" style="padding: 2px 8px; font-size:11px;" title="Inspect 9-Factor Decision Breakdown">
+            Inspect &rarr;
+          </button>`;
+      } else if (w.action === "FULL_RECLAIM" || w.action === "SOFT_RECLAIM" || w.classification === "IDLE") {
+        actionsHtml = `
+          <button class="btn btn-reclaim-traffic" data-ns="${this.escape(w.namespace)}" data-name="${this.escape(w.name)}" style="background:rgba(239, 68, 68, 0.15); color:#f87171; border:1px solid rgba(239, 68, 68, 0.45); padding:2px 8px; font-size:11px; font-weight:600; border-radius:4px; cursor:pointer;" title="Checkpoint and fully reclaim pod">
+            Reclaim
+          </button>
+          <button class="btn btn-subtle btn-inspect-traffic" data-idx="${idx}" style="padding: 2px 8px; font-size:11px;" title="Inspect 9-Factor Decision Breakdown">
+            Inspect &rarr;
+          </button>`;
+      } else {
+        actionsHtml = `
+          <button class="btn btn-subtle btn-inspect-traffic" data-idx="${idx}" style="padding: 2px 8px; font-size:11px;" title="Inspect 9-Factor Decision Breakdown">
+            Inspect &rarr;
+          </button>`;
+      }
+
       return `
-        <tr>
+        <tr style="${isReclaimed ? 'background: rgba(168, 85, 247, 0.04);' : ''}">
           <td>
-            <div class="bold text-main">${this.escape(w.name)}</div>
-            <div style="font-size:11px; color:var(--text-dim);">${this.escape(w.phase)}</div>
+            <div class="bold text-main" style="${isReclaimed ? 'color:#c084fc;' : ''}">${this.escape(w.name)}</div>
+            <div style="font-size:11px; color:${isReclaimed ? '#a78bfa' : 'var(--text-dim)'};">${this.escape(w.phase)}</div>
           </td>
           <td><span class="mono" style="font-size:11px; color:var(--text-muted);">${this.escape(w.namespace)}</span></td>
           <td>${statusBadge}</td>
           <td>${decisionBadge}</td>
           <td>${scoreBar}</td>
-          <td>
-            <div class="mono" style="font-size:11px;">${cpuUsed}m / ${cpuReq}m</div>
-            <div style="font-size:10px; color:var(--text-dim);">${cpuPct}% req</div>
-          </td>
-          <td>
-            <div class="mono" style="font-size:11px;">${memMb}M / ${memReqMb}M</div>
-          </td>
-          <td><span class="mono bold highlight">${qpsVal}</span></td>
+          <td>${cpuColHtml}</td>
+          <td>${memColHtml}</td>
+          <td><span class="mono bold ${isReclaimed ? '' : 'highlight'}">${qpsVal}</span></td>
           <td><span class="mono text-muted">${idleStr}</span></td>
           <td>${statePill}</td>
-          <td style="text-align: right;">
-            <button class="btn btn-subtle btn-inspect-traffic" data-idx="${idx}" style="padding: 2px 8px; font-size:11px;" title="Inspect 9-Factor Decision Breakdown">
-              Inspect &rarr;
-            </button>
+          <td style="text-align: right; white-space: nowrap;">
+            <div style="display:inline-flex; align-items:center; gap:6px;">
+              ${actionsHtml}
+            </div>
           </td>
         </tr>`;
     }).join("");
 
-    // Bind inspect buttons to open the existing decision drawer
+    // Bind inspect buttons
     tbody.querySelectorAll(".btn-inspect-traffic").forEach(btn => {
       btn.addEventListener("click", () => {
         const idx = parseInt(btn.getAttribute("data-idx"), 10);
         const item = this.workloads[idx];
         if (item && window.clusterCtrl) {
-          // Open score analysis drawer
           window.clusterCtrl.openScoreDrawer(item.rawItem);
         }
       });
     });
+
+    // Bind restore buttons
+    tbody.querySelectorAll(".btn-restore-traffic").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const ns = btn.getAttribute("data-ns");
+        const name = btn.getAttribute("data-name");
+        this.restoreWorkload(ns, name);
+      });
+    });
+
+    // Bind reclaim buttons
+    tbody.querySelectorAll(".btn-reclaim-traffic").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const ns = btn.getAttribute("data-ns");
+        const name = btn.getAttribute("data-name");
+        this.checkpointWorkload(ns, name);
+      });
+    });
+  }
+
+  async checkpointWorkload(ns, name) {
+    if (!confirm(`Trigger full reclamation for workload ${ns}/${name}?`)) return;
+    try {
+      const resp = await fetch("/api/workloads/checkpoint", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ namespace: ns, name: name }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        alert("Reclamation failed: " + (data.error || "unknown error"));
+      } else {
+        await this.refresh(false);
+      }
+    } catch (e) {
+      alert("Reclamation request error: " + e.message);
+    }
+  }
+
+  async restoreWorkload(ns, name) {
+    try {
+      const resp = await fetch("/api/workloads/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ namespace: ns, name: name, resolveDependencies: true }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        alert("Restoration failed: " + (data.error || "unknown error"));
+      } else {
+        await this.refresh(false);
+      }
+    } catch (e) {
+      alert("Restoration request error: " + e.message);
+    }
   }
 
   escape(str) {
