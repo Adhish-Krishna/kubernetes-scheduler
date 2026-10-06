@@ -637,6 +637,96 @@ export class ClusterController {
     }
   }
 
+  openScoreDrawer(rawItem) {
+    if (!rawItem) return;
+    const sim = rawItem.simulation || rawItem;
+    const life = rawItem.lifecycle || {};
+
+    const podName = document.getElementById("drawer-pod-name");
+    const podMeta = document.getElementById("drawer-pod-meta");
+    const vClass = document.getElementById("drawer-verdict-class");
+    const vScore = document.getElementById("drawer-verdict-score");
+    const vAction = document.getElementById("drawer-verdict-action");
+    const vSafety = document.getElementById("drawer-verdict-safety");
+    const capFull = document.getElementById("drawer-cap-full");
+    const capSoft = document.getElementById("drawer-cap-soft");
+
+    const name = sim.name || life.name || "Unknown";
+    const ns = sim.namespace || life.namespace || "ecommerce";
+    const node = sim.nodeName || "adaptive-cluster-control-plane";
+    const kind = sim.ownerKind || "Deployment";
+
+    if (podName) podName.textContent = name;
+    if (podMeta) podMeta.innerHTML = `Namespace: ${ns} &bull; Node: ${node} &bull; Kind: ${kind}`;
+
+    let clsStr = "ACTIVE";
+    if (sim.classification === 2 || sim.classification === "IDLE" || sim.classification === "ClassIdle") clsStr = "IDLE";
+    else if (sim.classification === 1 || sim.classification === "LOW_USAGE" || sim.classification === "ClassLowUsage") clsStr = "LOW_USAGE";
+    const classBadgeClass = clsStr === "ACTIVE" ? "badge-active" : (clsStr === "LOW_USAGE" ? "badge-low" : "badge-idle");
+
+    let actionStr = life.action;
+    if (!actionStr) {
+      if (sim.action === 2 || sim.action === "FULL_RECLAIM") actionStr = "FULL_RECLAIM";
+      else if (sim.action === 1 || sim.action === "SOFT_RECLAIM") actionStr = "SOFT_RECLAIM";
+      else actionStr = "KEEP";
+    }
+    const actionBadgeClass = actionStr === "FULL_RECLAIM" ? "badge-full" : (actionStr === "SOFT_RECLAIM" ? "badge-soft" : "badge-keep");
+
+    if (vClass) vClass.innerHTML = `<span class="status-badge ${classBadgeClass}">${clsStr}</span>`;
+    const scoreVal = (life.score !== undefined && life.score !== null) ? life.score : (sim.score || 0);
+    if (vScore) vScore.textContent = Number(scoreVal).toFixed(4);
+    if (vAction) vAction.innerHTML = `<span class="status-badge ${actionBadgeClass}">${actionStr}</span>`;
+
+    const caps = sim.capabilities || {};
+    const fullAllowed = caps.fullReclaimAllowed !== false;
+    const softAllowed = caps.softReclaimAllowed !== false;
+    if (vSafety) {
+      vSafety.innerHTML = (fullAllowed || softAllowed)
+        ? `<span class="badge-safety-pass">PASSED</span>`
+        : `<span class="badge-safety-block">BLOCKED</span>`;
+    }
+    if (capFull) {
+      capFull.textContent = fullAllowed ? "AVAILABLE" : "BLOCKED";
+      capFull.className = fullAllowed ? "badge-safety-pass" : "badge-safety-block";
+    }
+    if (capSoft) {
+      capSoft.textContent = softAllowed ? "AVAILABLE" : "BLOCKED";
+      capSoft.className = softAllowed ? "badge-safety-pass" : "badge-safety-block";
+    }
+
+    // Populate decision rationale lists
+    const ulDecision = document.getElementById("drawer-reasons-decision");
+    if (ulDecision) {
+      ulDecision.innerHTML = "";
+      const reasons = sim.decisionReasons || life.decisionReasons || [];
+      if (reasons.length === 0) {
+        ulDecision.innerHTML = `<li class="reason-li info">Workload operating under normal load &mdash; no reclaim required</li>`;
+      } else {
+        for (const r of reasons) {
+          ulDecision.innerHTML += `<li class="reason-li positive"><svg class="icon-svg sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg><span>${r}</span></li>`;
+        }
+      }
+    }
+
+    const ulRejection = document.getElementById("drawer-reasons-rejection");
+    if (ulRejection) {
+      ulRejection.innerHTML = "";
+      const rejections = sim.rejectionReasons || [];
+      if (rejections.length === 0) {
+        ulRejection.innerHTML = `<li class="reason-li info"><svg class="icon-svg sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg><span>Safety criteria passed &mdash; zero gating restrictions active</span></li>`;
+      } else {
+        for (const r of rejections) {
+          ulRejection.innerHTML += `<li class="reason-li negative"><svg class="icon-svg sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg><span>${r}</span></li>`;
+        }
+      }
+    }
+
+    const drawer = document.getElementById("drawer-panel");
+    const backdrop = document.getElementById("drawer-backdrop");
+    if (drawer) drawer.classList.add("open");
+    if (backdrop) backdrop.classList.add("active");
+  }
+
   async openConfigModal() {
     const modal = document.getElementById("modal-reclaim-config");
     if (!modal) return;

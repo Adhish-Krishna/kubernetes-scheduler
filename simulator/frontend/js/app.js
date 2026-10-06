@@ -102,7 +102,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.warn("Traffic controller initialization error:", e);
     }
 
-    // 8. Initial render
+    // 8. Default immediately to the requested single mode: Live Traffic & Scheduler Monitor
+    switchExecutionMode("traffic");
     renderDashboard(state);
   } catch (err) {
     console.error("Initialization error:", err);
@@ -183,47 +184,50 @@ async function executeSimulation() {
   }
 }
 
-// ── Event Bindings ─────────────────────────────────────────────────────────
-function bindEvents() {
-  // Mode Switcher: [ Scenario Simulator ] vs [ Active Workload / Cluster ] vs [ Live Traffic & Scheduler Monitor ]
+function switchExecutionMode(mode) {
   const btnModeSim = document.getElementById("btn-mode-simulator");
   const btnModeCluster = document.getElementById("btn-mode-cluster");
   const btnModeTraffic = document.getElementById("btn-mode-traffic");
   const simNav = document.querySelector(".header-center-nav");
   const headerActions = document.querySelector(".header-actions");
 
-  function switchExecutionMode(mode) {
-    if (btnModeSim) btnModeSim.classList.toggle("active", mode === "simulator");
-    if (btnModeCluster) btnModeCluster.classList.toggle("active", mode === "cluster");
-    if (btnModeTraffic) btnModeTraffic.classList.toggle("active", mode === "traffic");
+  if (btnModeSim) btnModeSim.classList.toggle("active", mode === "simulator");
+  if (btnModeCluster) btnModeCluster.classList.toggle("active", mode === "cluster");
+  if (btnModeTraffic) btnModeTraffic.classList.toggle("active", mode === "traffic");
 
-    document.querySelectorAll(".view-panel").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".view-panel").forEach(p => p.classList.remove("active"));
 
-    if (mode === "cluster") {
-      if (simNav) simNav.style.display = "none";
-      if (headerActions) headerActions.style.display = "none";
-      const clusterPanel = document.getElementById("view-panel-cluster");
-      if (clusterPanel) clusterPanel.classList.add("active");
-      if (window.clusterCtrl) window.clusterCtrl.refresh();
-      if (window.trafficCtrl) window.trafficCtrl.stopPolling();
-    } else if (mode === "traffic") {
-      if (simNav) simNav.style.display = "none";
-      if (headerActions) headerActions.style.display = "none";
-      const trafficPanel = document.getElementById("view-panel-traffic");
-      if (trafficPanel) trafficPanel.classList.add("active");
-      if (window.trafficCtrl) {
-        if (window.trafficCtrl.isPolling) {
-          window.trafficCtrl.startPolling();
-        }
-        window.trafficCtrl.refresh();
+  if (mode === "traffic") {
+    if (simNav) simNav.style.display = "none";
+    if (headerActions) headerActions.style.display = "none";
+    const trafficPanel = document.getElementById("view-panel-traffic");
+    if (trafficPanel) trafficPanel.classList.add("active");
+    if (window.trafficCtrl) {
+      if (window.trafficCtrl.isPolling) {
+        window.trafficCtrl.startPolling();
       }
-    } else {
-      if (simNav) simNav.style.display = "";
-      if (headerActions) headerActions.style.display = "";
-      state.setActiveView(state.activeView || "overview");
-      if (window.trafficCtrl) window.trafficCtrl.stopPolling();
+      window.trafficCtrl.refresh();
     }
+  } else if (mode === "cluster") {
+    if (simNav) simNav.style.display = "none";
+    if (headerActions) headerActions.style.display = "none";
+    const clusterPanel = document.getElementById("view-panel-cluster");
+    if (clusterPanel) clusterPanel.classList.add("active");
+    if (window.clusterCtrl) window.clusterCtrl.refresh();
+    if (window.trafficCtrl) window.trafficCtrl.stopPolling();
+  } else {
+    if (simNav) simNav.style.display = "";
+    if (headerActions) headerActions.style.display = "";
+    state.setActiveView(state.activeView || "overview");
+    if (window.trafficCtrl) window.trafficCtrl.stopPolling();
   }
+}
+
+// ── Event Bindings ─────────────────────────────────────────────────────────
+function bindEvents() {
+  const btnModeSim = document.getElementById("btn-mode-simulator");
+  const btnModeCluster = document.getElementById("btn-mode-cluster");
+  const btnModeTraffic = document.getElementById("btn-mode-traffic");
 
   if (btnModeSim) btnModeSim.addEventListener("click", () => switchExecutionMode("simulator"));
   if (btnModeCluster) btnModeCluster.addEventListener("click", () => switchExecutionMode("cluster"));
