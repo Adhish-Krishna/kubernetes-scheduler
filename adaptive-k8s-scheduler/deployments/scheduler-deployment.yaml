@@ -79,6 +79,8 @@ spec:
           ports:
             - containerPort: 8081
               name: http-api
+            - containerPort: 8083
+              name: activator
           volumeMounts:
             - name: checkpoints-volume
               mountPath: /var/lib/kubelet/checkpoints
@@ -105,6 +107,28 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
+  name: adaptive-scheduler
+  namespace: kube-system
+  labels:
+    app: adaptive-scheduler
+spec:
+  ports:
+    - name: http-api
+      port: 8081
+      targetPort: 8081
+    - name: activator
+      port: 8083
+      targetPort: 8083
+    - name: prometheus
+      port: 9090
+      targetPort: 9090
+  selector:
+    app: adaptive-scheduler
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: adaptive-scheduler-service
   namespace: kube-system
   labels:
@@ -114,9 +138,13 @@ spec:
     - name: http-api
       port: 8081
       targetPort: 8081
+    - name: activator
+      port: 8083
+      targetPort: 8083
     - name: prometheus
       port: 9090
       targetPort: 9090
   selector:
     app: adaptive-scheduler
   type: ClusterIP
+
