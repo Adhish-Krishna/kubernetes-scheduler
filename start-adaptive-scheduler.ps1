@@ -91,20 +91,24 @@ foreach ($ns in $namespaces) {
 Write-Host "`n[4/6] Installing CRIU inside Kind control-plane and applying deployments..." -ForegroundColor Yellow
 $controlPlaneNode = "$ClusterName-control-plane"
 Write-Host "Checking CRIU on node '$controlPlaneNode'..." -ForegroundColor Gray
-$criuCheck = docker exec $controlPlaneNode criu --version 2>$null
-if (-not $criuCheck) {
+$hasCriu = (docker exec $controlPlaneNode which criu 2>$null)
+if (-not $hasCriu) {
     Write-Host "Installing CRIU in container '$controlPlaneNode'..." -ForegroundColor Cyan
     docker exec $controlPlaneNode apt-get update -y
     docker exec $controlPlaneNode apt-get install -y criu
     docker exec $controlPlaneNode criu check
     Write-Host "CRIU installed and verified." -ForegroundColor Green
 } else {
-    Write-Host "CRIU is already installed: $criuCheck" -ForegroundColor Green
+    $ver = (docker exec $controlPlaneNode criu --version 2>$null)
+    Write-Host "CRIU is already installed ($ver)." -ForegroundColor Green
 }
 
 $deploymentsDir = Join-Path $RootPath "adaptive-k8s-scheduler\deployments"
-Write-Host "Applying CRDs from '$deploymentsDir\crds'..." -ForegroundColor Gray
-kubectl apply -f (Join-Path $deploymentsDir "crds")
+Write-Host "Applying CRD definitions..." -ForegroundColor Gray
+kubectl apply -f (Join-Path $deploymentsDir "crds\reclaim.io_reclaimpolicies.yaml")
+kubectl apply -f (Join-Path $deploymentsDir "crds\reclaim.io_checkpointrecords.yaml")
+Write-Host "Waiting for CRDs to be established..." -ForegroundColor Gray
+kubectl wait --for=condition=established --timeout=30s crd/reclaimpolicies.reclaim.io crd/checkpointrecords.reclaim.io 2>$null
 
 Write-Host "Applying RBAC..." -ForegroundColor Gray
 kubectl apply -f (Join-Path $deploymentsDir "rbac.yaml")
@@ -192,7 +196,8 @@ $psi.FileName = $backendExe
 $psi.WorkingDirectory = $backendDir
 $psi.EnvironmentVariables["TARGET_NAMESPACE"] = $TargetNamespace
 $psi.EnvironmentVariables["PROMETHEUS_URL"] = "http://127.0.0.1:9090"
-$psi.UseShellExecute = $true
+$psi.UseShellExecute = $false
+$psi.CreateNoWindow = $false
 
 [System.Diagnostics.Process]::Start($psi) | Out-Null
 
