@@ -205,8 +205,11 @@ export class ClusterController {
     }
 
     try {
-      const winParam = this.customWindowSeconds ? `?window=${this.customWindowSeconds}` : "";
-      const resp = await fetch(`/api/workloads${winParam}`);
+      const nsInput = document.getElementById("traffic-input-namespace");
+      const ns = nsInput ? nsInput.value.trim() : "test-application";
+      const nsParam = ns ? `&namespace=${encodeURIComponent(ns)}` : "";
+      const winParam = this.customWindowSeconds ? `window=${this.customWindowSeconds}` : "window=60";
+      const resp = await fetch(`/api/workloads?${winParam}${nsParam}`);
       if (!resp.ok) throw new Error("HTTP " + resp.status);
       const raw = await resp.json();
       const rawList = Array.isArray(raw) ? raw : (raw.workloads || []);

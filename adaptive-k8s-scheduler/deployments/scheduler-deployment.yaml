@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: adaptive-scheduler
-  namespace: kube-system
+  namespace: adaptive-scheduler
   labels:
     app: adaptive-scheduler
 spec:
@@ -72,7 +72,7 @@ spec:
             - "--scheduler-name=adaptive-scheduler"
             - "--leader-elect=true"
             - "--leader-elect-resource-name=adaptive-scheduler"
-            - "--leader-elect-resource-namespace=kube-system"
+            - "--leader-elect-resource-namespace=adaptive-scheduler"
             - "--prometheus-url=http://127.0.0.1:9090"
             - "--scrape-interval=10s"
             - "--http-port=8081"
@@ -108,7 +108,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: adaptive-scheduler
-  namespace: kube-system
+  namespace: adaptive-scheduler
   labels:
     app: adaptive-scheduler
 spec:
@@ -130,7 +130,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: adaptive-scheduler-service
-  namespace: kube-system
+  namespace: adaptive-scheduler
   labels:
     app: adaptive-scheduler
 spec:

@@ -133,7 +133,10 @@ func (h *ClusterAPIHandler) HandleWorkloads(w http.ResponseWriter, r *http.Reque
 
 	namespace := r.URL.Query().Get("namespace")
 	if namespace == "" {
-		namespace = "ecommerce"
+		namespace = os.Getenv("TARGET_NAMESPACE")
+	}
+	if namespace == "all" {
+		namespace = ""
 	}
 
 	windowStr := r.URL.Query().Get("window")

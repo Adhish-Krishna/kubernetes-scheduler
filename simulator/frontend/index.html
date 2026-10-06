@@ -636,6 +636,10 @@
           <span style="font-size:12px; color:var(--text-dim);">Live status from metrics collector &amp; authoritative scheduler engine</span>
         </div>
         <div style="display:flex; align-items:center; gap:12px;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase;">Namespace:</span>
+            <input type="text" id="traffic-input-namespace" class="form-input" style="width:130px; height:26px; padding:2px 8px; font-size:12px;" value="test-application" placeholder="all or namespace" title="Enter namespace (e.g. test-application, or leave empty for all)">
+          </div>
           <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-muted); cursor:pointer;">
             <input type="checkbox" id="traffic-auto-poll" checked style="cursor:pointer;">
             <span>Auto-refresh (2s)</span>

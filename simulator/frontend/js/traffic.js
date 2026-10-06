@@ -49,6 +49,14 @@ export class TrafficMonitorController {
         else this.stopPolling();
       });
     }
+
+    const nsInput = document.getElementById("traffic-input-namespace");
+    if (nsInput) {
+      nsInput.addEventListener("change", () => this.refresh());
+      nsInput.addEventListener("keyup", (e) => {
+        if (e.key === "Enter") this.refresh();
+      });
+    }
   }
 
   startPolling() {
@@ -210,7 +218,10 @@ export class TrafficMonitorController {
   async loadWorkloads() {
     const tbody = document.getElementById("traffic-workloads-tbody");
     try {
-      const resp = await fetch(`/api/workloads?window=${this.customWindowSeconds}`);
+      const nsInput = document.getElementById("traffic-input-namespace");
+      const ns = nsInput ? nsInput.value.trim() : "test-application";
+      const nsParam = ns ? `&namespace=${encodeURIComponent(ns)}` : "";
+      const resp = await fetch(`/api/workloads?window=${this.customWindowSeconds}${nsParam}`);
       if (!resp.ok) throw new Error("HTTP " + resp.status);
       const raw = await resp.json();
       const rawList = Array.isArray(raw) ? raw : (raw.workloads || []);
