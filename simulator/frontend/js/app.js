@@ -69,24 +69,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       state.setPolicy(health.policy);
     }
 
-    // 2. Fetch all 75 preset scenarios from Go backend
-    const presets = await api.getPresets();
-    state.setPresets(presets);
-    populateScenarioDropdown(presets);
-
-    // 3. Load default scenario (scenario-10: Strong Full Reclaim, or first available)
-    const defaultScenario = presets.find(p => p.id === "scenario-10") || presets[0];
-    if (defaultScenario) {
-      await loadScenario(defaultScenario.id, defaultScenario.name);
-    }
-
-    // 4. Register reactive render subscriber
-    state.subscribe(renderDashboard);
-
-    // 5. Setup event bindings
+    // 2. Setup event bindings
     bindEvents();
 
-    // 6. Initialize Active Workload / Cluster controller
+    // 3. Initialize Active Workload / Cluster controller (for drawer & config modal support)
     try {
       window.clusterCtrl = new ClusterController();
       await window.clusterCtrl.init();
@@ -94,7 +80,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.warn("Cluster controller initialization error:", e);
     }
 
-    // 7. Initialize Live Traffic & Scheduler Decision Monitor controller
+    // 4. Initialize Live Traffic & Scheduler Decision Monitor controller
     try {
       window.trafficCtrl = new TrafficMonitorController();
       await window.trafficCtrl.init();
@@ -102,9 +88,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.warn("Traffic controller initialization error:", e);
     }
 
-    // 8. Default immediately to the requested single mode: Live Traffic & Scheduler Monitor
+    // 5. Default immediately to the requested single mode: Live Traffic and Scheduler Monitor
     switchExecutionMode("traffic");
-    renderDashboard(state);
   } catch (err) {
     console.error("Initialization error:", err);
     showErrorBanner(`Failed to connect to simulator backend on port 8082: ${err.message}`);
@@ -583,14 +568,20 @@ function openDrawer(index) {
 
 // ── Master Render Dispatcher ───────────────────────────────────────────────
 function renderDashboard(currentState) {
-  // Update view navigation tabs
-  document.querySelectorAll(".nav-tab-btn").forEach(btn => {
-    btn.classList.toggle("active", btn.getAttribute("data-view") === currentState.activeView);
-  });
+  // If active mode is traffic, keep traffic panel active
+  const trafficPanel = document.getElementById("view-panel-traffic");
+  const isTrafficActive = trafficPanel && trafficPanel.classList.contains("active");
 
-  document.querySelectorAll(".view-panel").forEach(panel => {
-    panel.classList.toggle("active", panel.getAttribute("data-view-panel") === currentState.activeView);
-  });
+  if (!isTrafficActive) {
+    // Update view navigation tabs
+    document.querySelectorAll(".nav-tab-btn").forEach(btn => {
+      btn.classList.toggle("active", btn.getAttribute("data-view") === currentState.activeView);
+    });
+
+    document.querySelectorAll(".view-panel").forEach(panel => {
+      panel.classList.toggle("active", panel.getAttribute("data-view-panel") === currentState.activeView);
+    });
+  }
 
   // Render System Status Strip
   renderSystemStatus(currentState);
