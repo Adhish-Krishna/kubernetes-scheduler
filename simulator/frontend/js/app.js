@@ -5,6 +5,7 @@
 import { api } from "./api.js?v=2";
 import { state } from "./state.js?v=2";
 import { ClusterController } from "./cluster.js?v=6";
+import { TrafficMonitorController } from "./traffic.js?v=1";
 
 // ── Formatters (Presentation only) ──────────────────────────────────────────
 function formatCPU(millicores) {
@@ -93,7 +94,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.warn("Cluster controller initialization error:", e);
     }
 
-    // 7. Initial render
+    // 7. Initialize Live Traffic & Scheduler Decision Monitor controller
+    try {
+      window.trafficCtrl = new TrafficMonitorController();
+      await window.trafficCtrl.init();
+    } catch (e) {
+      console.warn("Traffic controller initialization error:", e);
+    }
+
+    // 8. Initial render
     renderDashboard(state);
   } catch (err) {
     console.error("Initialization error:", err);
@@ -176,35 +185,49 @@ async function executeSimulation() {
 
 // ── Event Bindings ─────────────────────────────────────────────────────────
 function bindEvents() {
-  // Mode Switcher: [ Scenario Simulator ] vs [ Active Workload / Cluster ]
+  // Mode Switcher: [ Scenario Simulator ] vs [ Active Workload / Cluster ] vs [ Live Traffic & Scheduler Monitor ]
   const btnModeSim = document.getElementById("btn-mode-simulator");
   const btnModeCluster = document.getElementById("btn-mode-cluster");
+  const btnModeTraffic = document.getElementById("btn-mode-traffic");
   const simNav = document.querySelector(".header-center-nav");
   const headerActions = document.querySelector(".header-actions");
 
   function switchExecutionMode(mode) {
+    if (btnModeSim) btnModeSim.classList.toggle("active", mode === "simulator");
+    if (btnModeCluster) btnModeCluster.classList.toggle("active", mode === "cluster");
+    if (btnModeTraffic) btnModeTraffic.classList.toggle("active", mode === "traffic");
+
+    document.querySelectorAll(".view-panel").forEach(p => p.classList.remove("active"));
+
     if (mode === "cluster") {
-      if (btnModeCluster) btnModeCluster.classList.add("active");
-      if (btnModeSim) btnModeSim.classList.remove("active");
       if (simNav) simNav.style.display = "none";
       if (headerActions) headerActions.style.display = "none";
-      document.querySelectorAll(".view-panel").forEach(p => p.classList.remove("active"));
       const clusterPanel = document.getElementById("view-panel-cluster");
       if (clusterPanel) clusterPanel.classList.add("active");
       if (window.clusterCtrl) window.clusterCtrl.refresh();
+      if (window.trafficCtrl) window.trafficCtrl.stopPolling();
+    } else if (mode === "traffic") {
+      if (simNav) simNav.style.display = "none";
+      if (headerActions) headerActions.style.display = "none";
+      const trafficPanel = document.getElementById("view-panel-traffic");
+      if (trafficPanel) trafficPanel.classList.add("active");
+      if (window.trafficCtrl) {
+        if (window.trafficCtrl.isPolling) {
+          window.trafficCtrl.startPolling();
+        }
+        window.trafficCtrl.refresh();
+      }
     } else {
-      if (btnModeSim) btnModeSim.classList.add("active");
-      if (btnModeCluster) btnModeCluster.classList.remove("active");
       if (simNav) simNav.style.display = "";
       if (headerActions) headerActions.style.display = "";
-      const clusterPanel = document.getElementById("view-panel-cluster");
-      if (clusterPanel) clusterPanel.classList.remove("active");
       state.setActiveView(state.activeView || "overview");
+      if (window.trafficCtrl) window.trafficCtrl.stopPolling();
     }
   }
 
   if (btnModeSim) btnModeSim.addEventListener("click", () => switchExecutionMode("simulator"));
   if (btnModeCluster) btnModeCluster.addEventListener("click", () => switchExecutionMode("cluster"));
+  if (btnModeTraffic) btnModeTraffic.addEventListener("click", () => switchExecutionMode("traffic"));
 
   // Navigation Tabs
   document.querySelectorAll(".nav-tab-btn").forEach(btn => {

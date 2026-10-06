@@ -42,6 +42,10 @@
         <svg class="icon-svg sm" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
         Active Workload / Cluster
       </button>
+      <button id="btn-mode-traffic" class="mode-switch-btn" data-mode="traffic">
+        <svg class="icon-svg sm" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+        Live Traffic &amp; Scheduler Monitor
+      </button>
     </div>
 
     <!-- Center Navigation Tabs -->
@@ -614,6 +618,108 @@
             </thead>
             <tbody id="cluster-workloads-tbody">
               <!-- Populated dynamically via cluster.js -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 5: LIVE TRAFFIC SIMULATION & SCHEDULER DECISION MONITOR -->
+    <div class="view-panel" data-view-panel="traffic" id="view-panel-traffic">
+      <div class="section-bar">
+        <div class="section-title-group">
+          <h2 class="section-title">Live Traffic Simulation &amp; Scheduler Decision Monitor</h2>
+          <span class="section-subtitle-tag">[Multi-Signal Idle Classification &bull; 9-Factor Reclaim Evaluation &bull; Scale-from-Zero Demand Restoration]</span>
+        </div>
+      </div>
+
+      <!-- Interactive Traffic Control Card -->
+      <section class="traffic-control-bar" aria-label="Traffic Control &amp; Generator">
+        <div class="traffic-ctrl-group">
+          <div class="traffic-status-pill idle" id="traffic-status-indicator">
+            <span class="status-dot"></span>
+            <span id="traffic-status-text">TRAFFIC: IDLE (STOPPED)</span>
+          </div>
+          <div class="traffic-buttons-group">
+            <button id="btn-traffic-start" class="btn btn-simulate" style="background:#10b981; border-color:#10b981;" title="Start continuous user traffic stream">
+              <svg class="icon-svg sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              <span>Start Traffic</span>
+            </button>
+            <button id="btn-traffic-stop" class="btn btn-subtle" style="border-color:#ef4444; color:#ef4444;" title="Halt all traffic to allow pods to go idle">
+              <svg class="icon-svg sm" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12"></rect></svg>
+              <span>Stop Traffic (Idle)</span>
+            </button>
+            <button id="btn-traffic-burst" class="btn btn-subtle" title="Send a quick burst of 20 requests">
+              <svg class="icon-svg sm" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+              <span>Burst 20 Reqs</span>
+            </button>
+            <button id="btn-traffic-wake" class="btn btn-subtle" style="border-color:#38bdf8; color:#38bdf8;" title="Send request via Activator to restore dormant workload">
+              <svg class="icon-svg sm" viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+              <span>Wake Workload (Restore)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Telemetry Stats Group -->
+        <div class="traffic-stats-strip">
+          <div class="traffic-stat-item">
+            <span class="traffic-stat-lbl">Target Ingress</span>
+            <span id="traffic-target-url" class="traffic-stat-val mono">http://localhost:8088</span>
+          </div>
+          <div class="traffic-stat-item">
+            <span class="traffic-stat-lbl">Requests Sent</span>
+            <span id="traffic-stat-sent" class="traffic-stat-val mono">0</span>
+          </div>
+          <div class="traffic-stat-item">
+            <span class="traffic-stat-lbl">Success / Errors</span>
+            <span class="traffic-stat-val mono"><span id="traffic-stat-success" style="color:#10b981;">0</span> / <span id="traffic-stat-errors" style="color:#ef4444;">0</span></span>
+          </div>
+          <div class="traffic-stat-item">
+            <span class="traffic-stat-lbl">Live QPS</span>
+            <span id="traffic-stat-qps" class="traffic-stat-val mono highlight">0.0</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Pods Toolbar -->
+      <div class="cluster-action-bar">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span class="bold" style="font-size:13px;">Active Workloads Telemetry &amp; Decisions</span>
+          <span style="font-size:12px; color:var(--text-dim);">Live status from metrics collector &amp; authoritative scheduler engine</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-muted); cursor:pointer;">
+            <input type="checkbox" id="traffic-auto-poll" checked style="cursor:pointer;">
+            <span>Auto-refresh (2s)</span>
+          </label>
+          <button id="btn-traffic-refresh" class="btn btn-simulate">
+            <svg class="icon-svg sm" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            Refresh Now
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Pods & Scheduler Decision Table -->
+      <div class="table-panel">
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Workload / Pod</th>
+                <th>Namespace</th>
+                <th>Metrics Status</th>
+                <th>Scheduler Decision</th>
+                <th>Reclaim Score</th>
+                <th>CPU (Used / Req)</th>
+                <th>Memory (Used / Req)</th>
+                <th>Live QPS</th>
+                <th>Idle Duration</th>
+                <th>Workload State</th>
+                <th style="text-align: right;">Analysis</th>
+              </tr>
+            </thead>
+            <tbody id="traffic-workloads-tbody">
+              <!-- Populated dynamically via traffic.js -->
             </tbody>
           </table>
         </div>
