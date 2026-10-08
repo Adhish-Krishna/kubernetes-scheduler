@@ -33,7 +33,12 @@ Write-Host "=================================================================" -
 # Step 1: Check or Create Kind Cluster
 # -----------------------------------------------------------------------------
 Write-Host "`n[1/6] Checking Kind cluster '$ClusterName'..." -ForegroundColor Yellow
-$existingClusters = kind get clusters 2>$null
+$existingClusters = @()
+try {
+    $existingClusters = (& kind get clusters 2>&1) | Where-Object { $_ -is [string] -and $_ -notmatch "No kind clusters found" }
+} catch {
+    $existingClusters = @()
+}
 if ($existingClusters -contains $ClusterName) {
     Write-Host "Cluster '$ClusterName' already exists. Switching context..." -ForegroundColor Green
     kubectl config use-context "kind-$ClusterName"
@@ -91,7 +96,16 @@ foreach ($ns in $namespaces) {
 Write-Host "`n[4/6] Installing CRIU inside Kind control-plane and applying deployments..." -ForegroundColor Yellow
 $controlPlaneNode = "$ClusterName-control-plane"
 Write-Host "Checking CRIU on node '$controlPlaneNode'..." -ForegroundColor Gray
-$hasCriu = (docker exec $controlPlaneNode which criu 2>$null)
+$hasCriu = $false
+try {
+    $out = (& docker exec $controlPlaneNode which criu 2>&1)
+    if ($LASTEXITCODE -eq 0 -and $out -like "*criu*") {
+        $hasCriu = $true
+    }
+} catch {
+    $hasCriu = $false
+}
+
 if (-not $hasCriu) {
     Write-Host "Installing CRIU in container '$controlPlaneNode'..." -ForegroundColor Cyan
     docker exec $controlPlaneNode apt-get update -y
@@ -99,7 +113,7 @@ if (-not $hasCriu) {
     docker exec $controlPlaneNode criu check
     Write-Host "CRIU installed and verified." -ForegroundColor Green
 } else {
-    $ver = (docker exec $controlPlaneNode criu --version 2>$null)
+    $ver = (& docker exec $controlPlaneNode criu --version 2>&1) | Select-Object -First 1
     Write-Host "CRIU is already installed ($ver)." -ForegroundColor Green
 }
 
@@ -173,21 +187,22 @@ $backendDir = Join-Path $RootPath "simulator\backend"
 $backendExe = Join-Path $backendDir "backend.exe"
 
 # Kill existing simulator backend instance if running
-$oldProc = Get-Process -Name "backend" -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*simulator*" }
-if ($oldProc) {
-    Write-Host "Stopping existing simulator backend process (PID $($oldProc.Id))..." -ForegroundColor Gray
-    Stop-Process -Id $oldProc.Id -Force
+$oldProcs = Get-Process -Name "backend" -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*simulator*" }
+if ($oldProcs) {
+    foreach ($proc in $oldProcs) {
+        Write-Host "Stopping existing simulator backend process (PID $($proc.Id))..." -ForegroundColor Gray
+        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+    }
+    Start-Sleep -Seconds 1
 }
 
-# Build backend if backend.exe does not exist
-if (-not (Test-Path $backendExe)) {
-    Write-Host "Compiling simulator backend in '$backendDir'..." -ForegroundColor Cyan
-    Push-Location $backendDir
-    try {
-        go build -o backend.exe main.go
-    } finally {
-        Pop-Location
-    }
+# Compile simulator backend to ensure latest scheduler logic is included
+Write-Host "Compiling simulator backend..." -ForegroundColor Cyan
+Push-Location (Join-Path $RootPath "simulator")
+try {
+    go build -o backend/backend.exe ./backend
+} finally {
+    Pop-Location
 }
 
 Write-Host "Starting simulator backend (TargetNamespace='$TargetNamespace')..." -ForegroundColor Green

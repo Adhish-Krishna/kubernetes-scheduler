@@ -235,8 +235,8 @@ func DefaultCollectorConfig() *CollectorConfig {
 		HTTPTimeout:      5 * time.Second,
 		WindowSize:       5, // 5 samples * 10s = 50s sliding window
 		IdleCPUThreshold: 20.0,
-		IdleNetThreshold: 10240.0,
-		IdleQPSThreshold: 0.1,
+		IdleNetThreshold: 15360.0,
+		IdleQPSThreshold: 2.0,
 		IdleMinDuration:  60 * time.Second,
 		HTTPPort:         8081,
 	}
